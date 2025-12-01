@@ -27,7 +27,7 @@
                 <i class="fa-solid fa-flag-checkered"></i> Milestones
             </li>
             <li data-tab="history-view">
-                <i class="fa-solid fa-clock-rotate-left"></i> History
+                <i class="fa-solid fa-chart-pie"></i> History
             </li>
         </ul>
 
@@ -42,7 +42,7 @@
         
         <div id="backup-warning" class="warning-banner" style="display:none;">
             <i class="fa-solid fa-triangle-exclamation"></i> 
-            It is the end of the month. Please Export your data for backup.
+            It is the end of the month. Please Export your data.
             <button onclick="window.exportData()">Download Now</button>
             <button class="close-warn" onclick="document.getElementById('backup-warning').style.display='none'">&times;</button>
         </div>
@@ -68,7 +68,7 @@
             </div>
 
             <div class="board-section">
-                <h3>This Week</h3>
+                <h3>This Week / Upcoming</h3>
                 <div class="kanban-board">
                     <div class="kanban-column" data-status="To Do" id="weekly-todo"></div>
                     <div class="kanban-column" data-status="In Progress" id="weekly-progress"></div>
@@ -127,6 +127,22 @@
                     <option value="last-month">Last Month</option>
                 </select>
             </header>
+
+            <div class="history-dashboard">
+                <div class="dash-card">
+                    <h3>Total Completed</h3>
+                    <div class="dash-num" id="dash-total">0</div>
+                </div>
+                <div class="dash-card">
+                    <h3>Top Category</h3>
+                    <div class="dash-text" id="dash-cat">-</div>
+                </div>
+                <div class="dash-card">
+                    <h3>Efficiency</h3>
+                    <div class="dash-text" id="dash-eff">100%</div>
+                </div>
+            </div>
+
             <div class="history-container">
                 <table class="simple-table">
                     <thead>
@@ -174,12 +190,12 @@
 
                 <div class="form-group">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                        <label>Category (Optional)</label>
-                        <button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage Categories</button>
+                        <label>Category</label>
+                        <button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage</button>
                     </div>
                     <div id="cat-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;">
                         <div style="display:flex; gap:5px; margin-bottom:10px;">
-                            <input type="text" id="new-cat-input" placeholder="New Category Name">
+                            <input type="text" id="new-cat-input" placeholder="New Category">
                             <button type="button" class="btn-black-small" onclick="window.addCategory()">Add</button>
                         </div>
                         <div id="cat-list-display" class="cat-tags-list"></div>
@@ -191,7 +207,7 @@
 
                 <div class="form-group">
                     <label>Details & Comments</label>
-                    <textarea id="t-notes" rows="4" placeholder="Add updates, sub-steps, or comments here..."></textarea>
+                    <textarea id="t-notes" rows="4" placeholder="Add updates or details..."></textarea>
                 </div>
 
                 <div class="form-group">
@@ -219,24 +235,24 @@
                 <input type="hidden" id="j-id">
                 <div class="form-group two-col">
                     <div>
-                        <label>Date *</label>
+                        <label>Date</label>
                         <input type="date" id="j-date" required>
                     </div>
                     <div>
-                        <label>Time Range *</label>
+                        <label>Time</label>
                         <input type="text" id="j-time" placeholder="10:00 - 18:00" required>
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Today's Recap *</label>
+                    <label>Today's Recap</label>
                     <textarea id="j-recap" rows="5" required></textarea>
                 </div>
                 <div class="form-group">
-                    <label>Tomorrow's Plan *</label>
+                    <label>Tomorrow's Plan</label>
                     <textarea id="j-plan" rows="4" required></textarea>
                 </div>
                 <div class="form-group">
-                    <label>Internal Notes (Optional)</label>
+                    <label>Notes</label>
                     <textarea id="j-notes" rows="2"></textarea>
                 </div>
                 <button type="submit" class="btn-black full-width">Save Entry</button>
@@ -252,11 +268,11 @@
                 <input type="hidden" id="m-id">
                 <div class="form-group">
                     <label>Title</label>
-                    <input type="text" id="m-title" required placeholder="e.g. Master Excel Macros">
+                    <input type="text" id="m-title" required>
                 </div>
                 <div class="form-group two-col">
                     <div>
-                        <label>Target Date</label>
+                        <label>Date</label>
                         <input type="date" id="m-date" required>
                     </div>
                     <div>
@@ -269,17 +285,17 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label>Details / Feedback</label>
-                    <textarea id="m-details" rows="4" placeholder="Supervisor feedback..."></textarea>
+                    <label>Details</label>
+                    <textarea id="m-details" rows="4"></textarea>
                 </div>
                 <div class="form-group">
-                    <label>Progress (%)</label>
+                    <label>Progress</label>
                     <input type="range" id="m-progress" min="0" max="100" value="0" oninput="document.getElementById('m-prog-val').innerText = this.value + '%'">
-                    <span id="m-prog-val" style="font-size:0.8rem; font-weight:600;">0%</span>
+                    <span id="m-prog-val">0%</span>
                 </div>
                 <div class="modal-actions">
                      <button type="button" class="btn-text delete-btn-hidden" id="btn-delete-ms" onclick="window.deleteCurrentMS()">Delete</button>
-                    <button type="submit" class="btn-black">Save Milestone</button>
+                    <button type="submit" class="btn-black">Save</button>
                 </div>
             </form>
         </div>
