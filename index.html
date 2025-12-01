@@ -26,16 +26,27 @@
             <li data-tab="milestones-view">
                 <i class="fa-solid fa-flag-checkered"></i> Milestones
             </li>
+            <li data-tab="history-view">
+                <i class="fa-solid fa-clock-rotate-left"></i> History
+            </li>
         </ul>
 
         <div class="bottom-actions">
             <button id="theme-toggle"><i class="fa-solid fa-circle-half-stroke"></i></button>
+            <button id="export-btn"><i class="fa-solid fa-file-export"></i> Export</button>
             <button id="refresh-btn"><i class="fa-solid fa-rotate"></i> Sync</button>
         </div>
     </nav>
 
     <main class="main-content">
         
+        <div id="backup-warning" class="warning-banner" style="display:none;">
+            <i class="fa-solid fa-triangle-exclamation"></i> 
+            It is the end of the month. Please Export your data for backup.
+            <button onclick="window.exportData()">Download Now</button>
+            <button class="close-warn" onclick="document.getElementById('backup-warning').style.display='none'">&times;</button>
+        </div>
+
         <section id="tasks-view" class="view active-view">
             <header class="top-bar">
                 <div>
@@ -88,7 +99,6 @@
                     </button>
                 </div>
             </header>
-
             <div id="ms-kanban" class="ms-view-container active">
                 <div class="kanban-board">
                     <div class="kanban-column" id="ms-col-todo"><h4>Planned</h4></div>
@@ -96,19 +106,40 @@
                     <div class="kanban-column" id="ms-col-done"><h4>Mastered</h4></div>
                 </div>
             </div>
-
             <div id="ms-list" class="ms-view-container">
                 <table class="simple-table">
                     <thead><tr><th>Milestone</th><th>Target Date</th><th>Progress</th><th>Action</th></tr></thead>
                     <tbody id="ms-table-body"></tbody>
                 </table>
             </div>
-
             <div id="ms-calendar" class="ms-view-container">
-                <div class="calendar-header">
-                    <h3 id="cal-month-name">Month</h3>
-                </div>
+                <div class="calendar-header"><h3 id="cal-month-name">Month</h3></div>
                 <div class="calendar-grid" id="calendar-grid"></div>
+            </div>
+        </section>
+
+        <section id="history-view" class="view">
+            <header class="top-bar">
+                <h1>Task History</h1>
+                <select id="history-filter" onchange="window.renderHistory()">
+                    <option value="all">All Time</option>
+                    <option value="last-week">Last Week</option>
+                    <option value="last-month">Last Month</option>
+                </select>
+            </header>
+            <div class="history-container">
+                <table class="simple-table">
+                    <thead>
+                        <tr>
+                            <th>Task</th>
+                            <th>Category</th>
+                            <th>Completed Date</th>
+                            <th>Status (Click to Revert)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body">
+                        </tbody>
+                </table>
             </div>
         </section>
 
@@ -146,7 +177,6 @@
                         <label>Category (Optional)</label>
                         <button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage Categories</button>
                     </div>
-                    
                     <div id="cat-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;">
                         <div style="display:flex; gap:5px; margin-bottom:10px;">
                             <input type="text" id="new-cat-input" placeholder="New Category Name">
@@ -154,10 +184,14 @@
                         </div>
                         <div id="cat-list-display" class="cat-tags-list"></div>
                     </div>
-
                     <select id="t-category">
                         <option value="">No Category</option>
-                        </select>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Details & Comments</label>
+                    <textarea id="t-notes" rows="4" placeholder="Add updates, sub-steps, or comments here..."></textarea>
                 </div>
 
                 <div class="form-group">
