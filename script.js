@@ -1,5 +1,5 @@
 /* =========================================
-   1. FIREBASE CONFIG
+   1. FIREBASE CONFIG (STABLE)
    ========================================= */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -16,7 +16,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const docRef = doc(db, "userData", "my-tracker-v2");
+const docRef = doc(db, "userData", "my-tracker-v3"); // Bumped version to ensure clean slate logic
 
 /* =========================================
    2. DATA LAYER
@@ -32,17 +32,15 @@ const defaultState = {
 
 let appState = { ...defaultState };
 
-// Robust Date Helper (Local YYYY-MM-DD)
+// ROCK SOLID DATE HELPER (Local Timezone YYYY-MM-DD)
 function getLocalISODate() {
     const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset).toISOString().split('T')[0];
 }
 
 window.saveData = async function() {
-    localStorage.setItem('analystOS_Data', JSON.stringify(appState));
+    localStorage.setItem('analystOS_Data_v3', JSON.stringify(appState));
     try {
         await setDoc(docRef, appState);
         console.log("Cloud synced.");
@@ -56,21 +54,23 @@ window.loadData = async function() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             appState = docSnap.data();
-            if(!appState.tasks) appState.tasks = []; 
-            if(!appState.journal) appState.journal = []; 
-            if(!appState.milestones) appState.milestones = []; 
+            // Integrity checks
+            if(!appState.tasks) appState.tasks = [];
+            if(!appState.journal) appState.journal = [];
+            if(!appState.milestones) appState.milestones = [];
             if(!appState.categories) appState.categories = ['General'];
         } else {
-            const local = localStorage.getItem('analystOS_Data');
+            const local = localStorage.getItem('analystOS_Data_v3');
             if(local) appState = JSON.parse(local);
             else window.saveData(); 
         }
     } catch (e) {
-        const local = localStorage.getItem('analystOS_Data');
+        const local = localStorage.getItem('analystOS_Data_v3');
         if(local) appState = JSON.parse(local);
     }
     
     applyTheme(appState.theme);
+    checkEndOfMonth();
     renderAll();
 };
 
@@ -86,6 +86,15 @@ function generateUUID() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
+function checkEndOfMonth() {
+    const today = new Date();
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    if(today.getDate() === lastDay) {
+        const banner = document.getElementById('backup-warning');
+        if(banner) banner.style.display = 'flex';
+    }
+}
+
 window.exportData = function() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
     const anchor = document.createElement('a');
@@ -95,11 +104,11 @@ window.exportData = function() {
 };
 
 /* =========================================
-   3. TASK LOGIC (FAIL-SAFE)
+   3. TASK LOGIC (REWRITTEN)
    ========================================= */
 
 function renderTasks() {
-    // Clear Boards
+    // 1. Clear all columns
     const ids = ['daily-todo', 'daily-progress', 'daily-done', 'weekly-todo', 'weekly-progress', 'weekly-done'];
     ids.forEach(id => {
         const el = document.getElementById(id);
@@ -107,65 +116,59 @@ function renderTasks() {
     });
 
     const today = getLocalISODate();
-    
-    // Debug: Ensure we actually have tasks to render
-    console.log("Rendering tasks...", appState.tasks.length);
 
     appState.tasks.forEach(task => {
         const card = createTaskCard(task);
-        let placedInDaily = false;
-
-        // --- DAILY BOARD LOGIC ---
-        // 1. If it's In Progress, show it.
-        // 2. If it's To Do and Due Date is Today OR Earlier (Overdue), show it.
-        // 3. If it's Done and Completed TODAY, show it.
         
-        const isProgress = task.status === 'In Progress';
-        const isDueTodayOrOverdue = task.status === 'To Do' && task.dueDate <= today;
-        const isDoneToday = task.status === 'Done' && task.completedDate === today;
+        // --- LOGIC GATES --- //
+        
+        // CASE 1: IN PROGRESS
+        // It goes to TODAY'S FOCUS immediately.
+        if (task.status === 'In Progress') {
+            const col = document.getElementById('daily-progress');
+            if(col) col.appendChild(card.cloneNode(true));
+            return; // Stop processing this task, it's placed.
+        }
 
-        if (isProgress || isDueTodayOrOverdue || isDoneToday) {
-            const colId = `daily-${task.status.toLowerCase().replace(' ', '')}`;
-            const col = document.getElementById(colId);
-            if(col) {
-                col.appendChild(card.cloneNode(true));
-                placedInDaily = true;
+        // CASE 2: DONE
+        // Only show in Today's Focus IF it was done TODAY. 
+        // Otherwise, it skips the board (lives in History).
+        if (task.status === 'Done') {
+            if (task.completedDate === today) {
+                const col = document.getElementById('daily-done');
+                if(col) col.appendChild(card.cloneNode(true));
             }
+            return; // Stop processing.
         }
 
-        // --- WEEKLY BOARD LOGIC ---
-        // Show EVERYTHING that is NOT Done. 
-        // If it IS Done, only show it if completed recently (within 7 days) to keep board clean.
-        
-        let showWeekly = false;
-        if (task.status !== 'Done') {
-            showWeekly = true; 
-        } else {
-            // Optional: Show done tasks for a few days in weekly view
-            if (task.completedDate >= getShiftedDate(-7)) showWeekly = true;
-        }
-
-        if (showWeekly) {
-            const colId = `weekly-${task.status.toLowerCase().replace(' ', '')}`;
-            const col = document.getElementById(colId);
-            if(col) {
-                const weeklyCard = card.cloneNode(true);
-                weeklyCard.onclick = () => window.openTaskModal(task.id);
-                col.appendChild(weeklyCard);
+        // CASE 3: TO DO
+        // If Due Today OR Overdue -> Today's Focus
+        // If Due Tomorrow or Later -> Upcoming
+        if (task.status === 'To Do') {
+            if (task.dueDate <= today) {
+                const col = document.getElementById('daily-todo');
+                if(col) col.appendChild(card.cloneNode(true));
+            } else {
+                // Future Task
+                const col = document.getElementById('weekly-todo');
+                if(col) {
+                    // We need to re-attach click listener for the second board
+                    const clone = card.cloneNode(true);
+                    clone.onclick = () => window.openTaskModal(task.id);
+                    col.appendChild(clone);
+                }
             }
         }
     });
 
-    // Re-attach listeners to Daily clones
+    // Re-attach listeners to the primary board clones
     ids.forEach(id => {
-        if(id.includes('daily')) {
-            const col = document.getElementById(id);
-            if(col) {
-                col.childNodes.forEach(node => {
-                    const taskId = node.dataset.id;
-                    node.onclick = () => window.openTaskModal(taskId);
-                });
-            }
+        const col = document.getElementById(id);
+        if(col) {
+            col.childNodes.forEach(node => {
+                const taskId = node.dataset.id;
+                node.onclick = () => window.openTaskModal(taskId);
+            });
         }
     });
 }
@@ -175,11 +178,20 @@ function createTaskCard(task) {
     div.className = 'kanban-card';
     div.draggable = true;
     div.dataset.id = task.id;
+    
+    // Calculate if overdue for visual flair
+    const today = getLocalISODate();
+    const isOverdue = task.status !== 'Done' && task.dueDate < today;
+    const dateColor = isOverdue ? '#D44C47' : 'var(--text-muted)';
+
     div.innerHTML = `
         <span class="priority-tag p-${task.priority}"></span>
         ${task.category ? `<span class="k-cat">${task.category}</span>` : ''}
         <div class="k-title">${task.title}</div>
-        <div class="k-date"><i class="fa-regular fa-calendar"></i> ${task.dueDate}</div>
+        <div class="k-date" style="color:${dateColor}">
+            <i class="fa-regular fa-calendar"></i> ${task.dueDate} 
+            ${isOverdue ? '(Overdue)' : ''}
+        </div>
     `;
     div.onclick = () => window.openTaskModal(task.id);
     return div;
@@ -225,7 +237,83 @@ function populateCatDropdown(selected = '') {
 }
 
 /* =========================================
-   4. JOURNAL LOGIC
+   4. HISTORY LOGIC (The Vault)
+   ========================================= */
+
+window.renderHistory = function() {
+    const tbody = document.getElementById('history-table-body');
+    tbody.innerHTML = '';
+    const filter = document.getElementById('history-filter').value;
+    const now = new Date();
+    
+    // 1. Get ALL tasks that are 'Done'
+    let doneTasks = appState.tasks.filter(t => t.status === 'Done');
+
+    // 2. Calculate Dashboard Stats
+    const totalCompleted = doneTasks.length;
+    
+    const catCounts = {};
+    doneTasks.forEach(t => { 
+        const c = t.category || 'Uncategorized'; 
+        catCounts[c] = (catCounts[c] || 0) + 1; 
+    });
+    const topCat = Object.keys(catCounts).length > 0 
+        ? Object.keys(catCounts).reduce((a, b) => catCounts[a] > catCounts[b] ? a : b) 
+        : '-';
+
+    document.getElementById('dash-total').innerText = totalCompleted;
+    document.getElementById('dash-cat').innerText = topCat;
+
+    // 3. Apply Time Filter
+    const today = getLocalISODate();
+    
+    if (filter === 'last-week') {
+        const d = new Date(); d.setDate(d.getDate() - 7);
+        const limit = d.toISOString().split('T')[0];
+        doneTasks = doneTasks.filter(t => t.completedDate >= limit);
+    } else if (filter === 'last-month') {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        const limit = d.toISOString().split('T')[0];
+        doneTasks = doneTasks.filter(t => t.completedDate >= limit);
+    }
+
+    // 4. Sort (Newest completed first)
+    doneTasks.sort((a,b) => {
+        const dateA = a.completedDate || '0000-00-00';
+        const dateB = b.completedDate || '0000-00-00';
+        return dateB.localeCompare(dateA);
+    });
+
+    // 5. Render
+    doneTasks.forEach(task => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${task.title}</strong></td>
+            <td>${task.category || '-'}</td>
+            <td>${task.completedDate || 'Unknown'}</td>
+            <td>
+                <span style="color:var(--text-muted); font-size:0.8rem;">
+                    <i class="fa-solid fa-rotate-left"></i> Click to Restore
+                </span>
+            </td>
+        `;
+        // Revert Logic
+        tr.onclick = () => {
+            if(confirm(`Move "${task.title}" back to In Progress?`)) {
+                task.status = 'In Progress';
+                task.completedDate = null; // Clear completion date
+                window.saveData();
+                renderTasks();
+                renderHistory();
+                alert('Task restored to Today\'s Focus.');
+            }
+        };
+        tbody.appendChild(tr);
+    });
+};
+
+/* =========================================
+   5. JOURNAL LOGIC
    ========================================= */
 
 function renderJournal() {
@@ -270,68 +358,7 @@ window.copyToClipboard = function(btn, textEncoded) {
 };
 
 /* =========================================
-   5. HISTORY & DASHBOARD LOGIC
-   ========================================= */
-
-window.renderHistory = function() {
-    const tbody = document.getElementById('history-table-body');
-    tbody.innerHTML = '';
-    const filter = document.getElementById('history-filter').value;
-    
-    // Get Done Tasks
-    let doneTasks = appState.tasks.filter(t => t.status === 'Done');
-
-    // Stats Calculation
-    const totalCompleted = doneTasks.length;
-    
-    // Category Calculation
-    const catCounts = {};
-    doneTasks.forEach(t => { const c = t.category || 'Uncategorized'; catCounts[c] = (catCounts[c] || 0) + 1; });
-    const topCat = Object.keys(catCounts).reduce((a, b) => catCounts[a] > catCounts[b] ? a : b, '-');
-
-    // Update Dashboard UI
-    document.getElementById('dash-total').innerText = totalCompleted;
-    document.getElementById('dash-cat').innerText = topCat;
-
-    // Filter for Table
-    if (filter === 'last-week') {
-        doneTasks = doneTasks.filter(t => t.completedDate >= getShiftedDate(-7));
-    } else if (filter === 'last-month') {
-        doneTasks = doneTasks.filter(t => t.completedDate >= getShiftedDate(-30));
-    }
-
-    doneTasks.sort((a,b) => new Date(b.completedDate) - new Date(a.completedDate));
-
-    doneTasks.forEach(task => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${task.title}</td>
-            <td>${task.category || '-'}</td>
-            <td>${task.completedDate || 'Unknown'}</td>
-            <td><span class="priority-tag p-Low" style="position:static; display:inline-block; margin-right:5px; background:var(--s-done)"></span> Done (Revert)</td>
-        `;
-        tr.onclick = () => {
-            if(confirm(`Move "${task.title}" back to In Progress?`)) {
-                task.status = 'In Progress';
-                task.completedDate = null;
-                window.saveData();
-                renderTasks();
-                renderHistory();
-            }
-        };
-        tbody.appendChild(tr);
-    });
-};
-
-// Helper for dates
-function getShiftedDate(days) {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
-}
-
-/* =========================================
-   6. MILESTONES (unchanged logic)
+   6. MILESTONE LOGIC
    ========================================= */
 let currentMilestoneView = 'kanban';
 window.switchMilestoneView = function(viewName) {
@@ -405,7 +432,7 @@ function renderMSCalendar() {
 }
 
 /* =========================================
-   7. MODAL & FORMS
+   7. MODAL & FORM HANDLERS
    ========================================= */
 
 window.openTaskModal = function(id = null) {
@@ -487,17 +514,22 @@ document.getElementById('task-form').addEventListener('submit', (e) => {
         category: document.getElementById('t-category').value,
         status: status,
         notes: document.getElementById('t-notes').value,
+        // If done, mark today. If active, clear.
         completedDate: status === 'Done' ? getLocalISODate() : null
     };
+    
     if(id) {
         const idx = appState.tasks.findIndex(t => t.id === id);
+        // If it was already done and is still done, keep original date
         if (appState.tasks[idx].status === 'Done' && status === 'Done') {
             task.completedDate = appState.tasks[idx].completedDate; 
         }
         appState.tasks[idx] = task;
     } else appState.tasks.push(task);
+
     window.saveData();
-    renderAll();
+    renderTasks();
+    renderHistory();
     window.closeModal('task-modal');
 });
 
@@ -544,7 +576,7 @@ document.getElementById('milestone-form').addEventListener('submit', (e) => {
 window.deleteCurrentTask = function() {
     if(confirm('Delete?')) {
         appState.tasks = appState.tasks.filter(t => t.id !== document.getElementById('task-id').value);
-        window.saveData(); renderAll(); window.closeModal('task-modal');
+        window.saveData(); renderTasks(); renderHistory(); window.closeModal('task-modal');
     }
 };
 
@@ -572,6 +604,7 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
 });
 
 document.getElementById('refresh-btn').addEventListener('click', () => { window.loadData(); alert('Synced.'); });
+document.getElementById('export-btn').addEventListener('click', window.exportData);
 
 window.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.nav-links li').forEach(li => {
