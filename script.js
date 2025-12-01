@@ -1,7 +1,6 @@
 /* =========================================
-   1. FIREBASE CONFIG (STABLE VERSION)
+   1. FIREBASE CONFIG
    ========================================= */
-// We use version 10.7.1 which is guaranteed to work
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -33,23 +32,22 @@ const defaultState = {
 
 let appState = { ...defaultState };
 
-// Helper to get local date string (Fixes disappearing bug)
+// Robust Date Helper (Local YYYY-MM-DD)
 function getLocalISODate() {
     const d = new Date();
-    const offset = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 window.saveData = async function() {
-    // 1. Save Local (Instant backup)
     localStorage.setItem('analystOS_Data', JSON.stringify(appState));
-    
-    // 2. Save Cloud
     try {
         await setDoc(docRef, appState);
-        console.log("Cloud synced successfully.");
+        console.log("Cloud synced.");
     } catch (e) {
-        console.error("Cloud sync failed. Check your Firestore Rules in Firebase Console.", e);
+        console.error("Sync error:", e);
     }
 };
 
@@ -58,25 +56,21 @@ window.loadData = async function() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             appState = docSnap.data();
-            // Integrity Checks
+            if(!appState.tasks) appState.tasks = []; 
+            if(!appState.journal) appState.journal = []; 
+            if(!appState.milestones) appState.milestones = []; 
             if(!appState.categories) appState.categories = ['General'];
-            if(!appState.milestones) appState.milestones = [];
-            if(!appState.journal) appState.journal = [];
-            if(!appState.tasks) appState.tasks = [];
         } else {
-            // Cloud empty? Check local
             const local = localStorage.getItem('analystOS_Data');
             if(local) appState = JSON.parse(local);
             else window.saveData(); 
         }
     } catch (e) {
-        console.warn("Offline or Permission Denied. Loading local backup.");
         const local = localStorage.getItem('analystOS_Data');
         if(local) appState = JSON.parse(local);
     }
     
     applyTheme(appState.theme);
-    checkEndOfMonth();
     renderAll();
 };
 
@@ -92,70 +86,66 @@ function generateUUID() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
-function checkEndOfMonth() {
-    const today = new Date();
-    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    if(today.getDate() === lastDay) {
-        const banner = document.getElementById('backup-warning');
-        if(banner) banner.style.display = 'flex';
-    }
-}
-
 window.exportData = function() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
     const anchor = document.createElement('a');
     anchor.setAttribute("href", dataStr);
-    anchor.setAttribute("download", `AnalystOS_Backup_${getLocalISODate()}.json`);
+    anchor.setAttribute("download", `Backup_${getLocalISODate()}.json`);
     anchor.click();
 };
 
 /* =========================================
-   3. TASK LOGIC (FIXED)
+   3. TASK LOGIC (FAIL-SAFE)
    ========================================= */
 
 function renderTasks() {
+    // Clear Boards
     const ids = ['daily-todo', 'daily-progress', 'daily-done', 'weekly-todo', 'weekly-progress', 'weekly-done'];
     ids.forEach(id => {
         const el = document.getElementById(id);
         if(el) el.innerHTML = '';
     });
 
-    const today = getLocalISODate(); // Uses corrected local time
+    const today = getLocalISODate();
     
-    // Calculate Week Range
-    const curr = new Date();
-    const first = curr.getDate() - curr.getDay(); 
-    const last = first + 6; 
-    const firstday = new Date(curr.setDate(first)).toISOString().split('T')[0];
-    const lastday = new Date(curr.setDate(last)).toISOString().split('T')[0];
+    // Debug: Ensure we actually have tasks to render
+    console.log("Rendering tasks...", appState.tasks.length);
 
     appState.tasks.forEach(task => {
         const card = createTaskCard(task);
+        let placedInDaily = false;
+
+        // --- DAILY BOARD LOGIC ---
+        // 1. If it's In Progress, show it.
+        // 2. If it's To Do and Due Date is Today OR Earlier (Overdue), show it.
+        // 3. If it's Done and Completed TODAY, show it.
         
-        // --- LOGIC: TODAY'S FOCUS ---
-        let showDaily = false;
+        const isProgress = task.status === 'In Progress';
+        const isDueTodayOrOverdue = task.status === 'To Do' && task.dueDate <= today;
+        const isDoneToday = task.status === 'Done' && task.completedDate === today;
 
-        // 1. In Progress: ALWAYS SHOW (regardless of date)
-        if (task.status === 'In Progress') {
-            showDaily = true; 
-        } 
-        // 2. To Do: Show if Due Date is Today OR Overdue
-        else if (task.status === 'To Do') {
-             if (task.dueDate <= today) showDaily = true;
-        } 
-        // 3. Done: Show only if finished Today
-        else if (task.status === 'Done') {
-            if (task.completedDate === today) showDaily = true;
-        }
-
-        if (showDaily) {
+        if (isProgress || isDueTodayOrOverdue || isDoneToday) {
             const colId = `daily-${task.status.toLowerCase().replace(' ', '')}`;
             const col = document.getElementById(colId);
-            if(col) col.appendChild(card.cloneNode(true));
+            if(col) {
+                col.appendChild(card.cloneNode(true));
+                placedInDaily = true;
+            }
         }
 
-        // --- LOGIC: WEEKLY BOARD ---
-        if (task.dueDate >= firstday && task.dueDate <= lastday) {
+        // --- WEEKLY BOARD LOGIC ---
+        // Show EVERYTHING that is NOT Done. 
+        // If it IS Done, only show it if completed recently (within 7 days) to keep board clean.
+        
+        let showWeekly = false;
+        if (task.status !== 'Done') {
+            showWeekly = true; 
+        } else {
+            // Optional: Show done tasks for a few days in weekly view
+            if (task.completedDate >= getShiftedDate(-7)) showWeekly = true;
+        }
+
+        if (showWeekly) {
             const colId = `weekly-${task.status.toLowerCase().replace(' ', '')}`;
             const col = document.getElementById(colId);
             if(col) {
@@ -166,7 +156,7 @@ function renderTasks() {
         }
     });
 
-    // Re-attach listeners
+    // Re-attach listeners to Daily clones
     ids.forEach(id => {
         if(id.includes('daily')) {
             const col = document.getElementById(id);
@@ -246,14 +236,9 @@ function renderJournal() {
     sorted.forEach(entry => {
         const div = document.createElement('div');
         div.className = 'journal-entry';
-
-        // Fix date format
+        
         const dateParts = entry.date.split('-'); 
-        let formattedDate = entry.date;
-        if(dateParts.length === 3) {
-            formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0].slice(-2)}`;
-        }
-
+        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0].slice(-2)}` : entry.date;
         const copyText = `Todays Recap: (${formattedDate}) [${entry.time}]\n${entry.recap}\n\nTomorrows plans:\n${entry.plan}`;
         const encodedText = encodeURIComponent(copyText);
 
@@ -285,115 +270,34 @@ window.copyToClipboard = function(btn, textEncoded) {
 };
 
 /* =========================================
-   5. MILESTONE LOGIC
-   ========================================= */
-let currentMilestoneView = 'kanban';
-
-window.switchMilestoneView = function(viewName) {
-    currentMilestoneView = viewName;
-    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-    
-    const index = viewName === 'kanban' ? 0 : viewName === 'list' ? 1 : 2;
-    document.querySelectorAll('.view-btn')[index].classList.add('active');
-    
-    document.querySelectorAll('.ms-view-container').forEach(c => c.classList.remove('active'));
-    document.getElementById(`ms-${viewName}`).classList.add('active');
-    renderMilestones();
-};
-
-function renderMilestones() {
-    if (currentMilestoneView === 'kanban') renderMSKanban();
-    else if (currentMilestoneView === 'list') renderMSList();
-    else renderMSCalendar();
-}
-
-function renderMSKanban() {
-    const cols = { 'Planned': [], 'In Progress': [], 'Mastered': [] };
-    appState.milestones.forEach(m => { if(cols[m.status]) cols[m.status].push(m); });
-    
-    ['Planned', 'In Progress', 'Mastered'].forEach(status => {
-        const colId = `ms-col-${status === 'Planned' ? 'todo' : status === 'In Progress' ? 'progress' : 'done'}`;
-        const container = document.getElementById(colId);
-        const header = container.querySelector('h4');
-        container.innerHTML = '';
-        container.appendChild(header);
-
-        cols[status].forEach(m => {
-            const card = document.createElement('div');
-            card.className = 'kanban-card';
-            card.innerHTML = `
-                <div class="k-title">${m.title}</div>
-                <div class="k-date">${m.targetDate}</div>
-                <div style="font-size:0.7rem; margin-top:5px;">Progress: ${m.progress}%</div>
-                <div style="height:4px; background:#eee; margin-top:2px;"><div style="width:${m.progress}%; height:100%; background:var(--accent);"></div></div>
-            `;
-            card.onclick = () => window.openMilestoneModal(m.id);
-            container.appendChild(card);
-        });
-    });
-}
-
-function renderMSList() {
-    const tbody = document.getElementById('ms-table-body');
-    tbody.innerHTML = appState.milestones.map(m => `
-        <tr onclick="window.openMilestoneModal('${m.id}')">
-            <td>${m.title}</td>
-            <td>${m.targetDate}</td>
-            <td>${m.progress}%</td>
-            <td>${m.status}</td>
-        </tr>
-    `).join('');
-}
-
-function renderMSCalendar() {
-    const grid = document.getElementById('calendar-grid');
-    grid.innerHTML = '';
-    const now = new Date();
-    const month = now.getMonth();
-    const year = now.getFullYear();
-    document.getElementById('cal-month-name').innerText = now.toLocaleString('default', { month: 'long', year: 'numeric' });
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    for(let i=0; i<firstDay; i++) grid.appendChild(document.createElement('div'));
-
-    for(let i=1; i<=daysInMonth; i++) {
-        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-        const div = document.createElement('div');
-        div.className = 'cal-day';
-        if(i === now.getDate()) div.classList.add('today');
-        div.innerHTML = `<span>${i}</span>`;
-        appState.milestones.filter(m => m.targetDate === dateStr).forEach(m => {
-            const item = document.createElement('div');
-            item.className = 'cal-item';
-            item.innerText = m.title;
-            item.onclick = (e) => { e.stopPropagation(); window.openMilestoneModal(m.id); };
-            div.appendChild(item);
-        });
-        grid.appendChild(div);
-    }
-}
-
-/* =========================================
-   6. HISTORY LOGIC
+   5. HISTORY & DASHBOARD LOGIC
    ========================================= */
 
 window.renderHistory = function() {
     const tbody = document.getElementById('history-table-body');
     tbody.innerHTML = '';
     const filter = document.getElementById('history-filter').value;
-    const now = new Date();
     
+    // Get Done Tasks
     let doneTasks = appState.tasks.filter(t => t.status === 'Done');
 
+    // Stats Calculation
+    const totalCompleted = doneTasks.length;
+    
+    // Category Calculation
+    const catCounts = {};
+    doneTasks.forEach(t => { const c = t.category || 'Uncategorized'; catCounts[c] = (catCounts[c] || 0) + 1; });
+    const topCat = Object.keys(catCounts).reduce((a, b) => catCounts[a] > catCounts[b] ? a : b, '-');
+
+    // Update Dashboard UI
+    document.getElementById('dash-total').innerText = totalCompleted;
+    document.getElementById('dash-cat').innerText = topCat;
+
+    // Filter for Table
     if (filter === 'last-week') {
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(now.getDate() - 7);
-        doneTasks = doneTasks.filter(t => new Date(t.completedDate) >= oneWeekAgo);
+        doneTasks = doneTasks.filter(t => t.completedDate >= getShiftedDate(-7));
     } else if (filter === 'last-month') {
-        const oneMonthAgo = new Date();
-        oneMonthAgo.setDate(now.getDate() - 30);
-        doneTasks = doneTasks.filter(t => new Date(t.completedDate) >= oneMonthAgo);
+        doneTasks = doneTasks.filter(t => t.completedDate >= getShiftedDate(-30));
     }
 
     doneTasks.sort((a,b) => new Date(b.completedDate) - new Date(a.completedDate));
@@ -419,8 +323,89 @@ window.renderHistory = function() {
     });
 };
 
+// Helper for dates
+function getShiftedDate(days) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+}
+
 /* =========================================
-   7. FORM & MODAL HANDLERS
+   6. MILESTONES (unchanged logic)
+   ========================================= */
+let currentMilestoneView = 'kanban';
+window.switchMilestoneView = function(viewName) {
+    currentMilestoneView = viewName;
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+    const index = viewName === 'kanban' ? 0 : viewName === 'list' ? 1 : 2;
+    document.querySelectorAll('.view-btn')[index].classList.add('active');
+    document.querySelectorAll('.ms-view-container').forEach(c => c.classList.remove('active'));
+    document.getElementById(`ms-${viewName}`).classList.add('active');
+    renderMilestones();
+};
+function renderMilestones() {
+    if (currentMilestoneView === 'kanban') renderMSKanban();
+    else if (currentMilestoneView === 'list') renderMSList();
+    else renderMSCalendar();
+}
+function renderMSKanban() {
+    const cols = { 'Planned': [], 'In Progress': [], 'Mastered': [] };
+    appState.milestones.forEach(m => { if(cols[m.status]) cols[m.status].push(m); });
+    ['Planned', 'In Progress', 'Mastered'].forEach(status => {
+        const colId = `ms-col-${status === 'Planned' ? 'todo' : status === 'In Progress' ? 'progress' : 'done'}`;
+        const container = document.getElementById(colId);
+        const header = container.querySelector('h4');
+        container.innerHTML = '';
+        container.appendChild(header);
+        cols[status].forEach(m => {
+            const card = document.createElement('div');
+            card.className = 'kanban-card';
+            card.innerHTML = `
+                <div class="k-title">${m.title}</div>
+                <div class="k-date">${m.targetDate}</div>
+                <div style="font-size:0.7rem; margin-top:5px;">Progress: ${m.progress}%</div>
+                <div style="height:4px; background:#eee; margin-top:2px;"><div style="width:${m.progress}%; height:100%; background:var(--accent);"></div></div>
+            `;
+            card.onclick = () => window.openMilestoneModal(m.id);
+            container.appendChild(card);
+        });
+    });
+}
+function renderMSList() {
+    const tbody = document.getElementById('ms-table-body');
+    tbody.innerHTML = appState.milestones.map(m => `
+        <tr onclick="window.openMilestoneModal('${m.id}')"><td>${m.title}</td><td>${m.targetDate}</td><td>${m.progress}%</td><td>${m.status}</td></tr>
+    `).join('');
+}
+function renderMSCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    grid.innerHTML = '';
+    const now = new Date();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    document.getElementById('cal-month-name').innerText = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for(let i=0; i<firstDay; i++) grid.appendChild(document.createElement('div'));
+    for(let i=1; i<=daysInMonth; i++) {
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        const div = document.createElement('div');
+        div.className = 'cal-day';
+        if(i === now.getDate()) div.classList.add('today');
+        div.innerHTML = `<span>${i}</span>`;
+        appState.milestones.filter(m => m.targetDate === dateStr).forEach(m => {
+            const item = document.createElement('div');
+            item.className = 'cal-item';
+            item.innerText = m.title;
+            item.onclick = (e) => { e.stopPropagation(); window.openMilestoneModal(m.id); };
+            div.appendChild(item);
+        });
+        grid.appendChild(div);
+    }
+}
+
+/* =========================================
+   7. MODAL & FORMS
    ========================================= */
 
 window.openTaskModal = function(id = null) {
@@ -452,7 +437,6 @@ window.openJournalModal = function(id = null) {
     const modal = document.getElementById('journal-modal');
     const form = document.getElementById('journal-form');
     form.reset();
-
     if(id) {
         const j = appState.journal.find(x => x.id === id);
         document.getElementById('j-id').value = j.id;
@@ -491,7 +475,6 @@ window.openMilestoneModal = function(id = null) {
 
 window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
 
-// Submits
 document.getElementById('task-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const id = document.getElementById('task-id').value;
@@ -506,7 +489,6 @@ document.getElementById('task-form').addEventListener('submit', (e) => {
         notes: document.getElementById('t-notes').value,
         completedDate: status === 'Done' ? getLocalISODate() : null
     };
-    
     if(id) {
         const idx = appState.tasks.findIndex(t => t.id === id);
         if (appState.tasks[idx].status === 'Done' && status === 'Done') {
@@ -514,10 +496,8 @@ document.getElementById('task-form').addEventListener('submit', (e) => {
         }
         appState.tasks[idx] = task;
     } else appState.tasks.push(task);
-
     window.saveData();
-    renderTasks();
-    renderHistory();
+    renderAll();
     window.closeModal('task-modal');
 });
 
@@ -564,7 +544,7 @@ document.getElementById('milestone-form').addEventListener('submit', (e) => {
 window.deleteCurrentTask = function() {
     if(confirm('Delete?')) {
         appState.tasks = appState.tasks.filter(t => t.id !== document.getElementById('task-id').value);
-        window.saveData(); renderTasks(); renderHistory(); window.closeModal('task-modal');
+        window.saveData(); renderAll(); window.closeModal('task-modal');
     }
 };
 
@@ -592,7 +572,6 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
 });
 
 document.getElementById('refresh-btn').addEventListener('click', () => { window.loadData(); alert('Synced.'); });
-document.getElementById('export-btn').addEventListener('click', window.exportData);
 
 window.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.nav-links li').forEach(li => {
