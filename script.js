@@ -1,8 +1,9 @@
 /* =========================================
-   1. FIREBASE CONFIG
+   1. FIREBASE CONFIG (STABLE VERSION)
    ========================================= */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+// We use version 10.7.1 which is guaranteed to work
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBvHyi_7JdGenOU96jMV51pRoH_TW6897A",
@@ -19,7 +20,7 @@ const db = getFirestore(app);
 const docRef = doc(db, "userData", "my-tracker-v2");
 
 /* =========================================
-   2. DATA LAYER (Hybrid: Cloud + Local)
+   2. DATA LAYER
    ========================================= */
 
 const defaultState = {
@@ -32,13 +33,23 @@ const defaultState = {
 
 let appState = { ...defaultState };
 
+// Helper to get local date string (Fixes disappearing bug)
+function getLocalISODate() {
+    const d = new Date();
+    const offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset).toISOString().split('T')[0];
+}
+
 window.saveData = async function() {
+    // 1. Save Local (Instant backup)
     localStorage.setItem('analystOS_Data', JSON.stringify(appState));
+    
+    // 2. Save Cloud
     try {
         await setDoc(docRef, appState);
         console.log("Cloud synced successfully.");
     } catch (e) {
-        console.error("Sync error:", e);
+        console.error("Cloud sync failed. Check your Firestore Rules in Firebase Console.", e);
     }
 };
 
@@ -47,14 +58,19 @@ window.loadData = async function() {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             appState = docSnap.data();
+            // Integrity Checks
             if(!appState.categories) appState.categories = ['General'];
             if(!appState.milestones) appState.milestones = [];
+            if(!appState.journal) appState.journal = [];
+            if(!appState.tasks) appState.tasks = [];
         } else {
+            // Cloud empty? Check local
             const local = localStorage.getItem('analystOS_Data');
             if(local) appState = JSON.parse(local);
             else window.saveData(); 
         }
     } catch (e) {
+        console.warn("Offline or Permission Denied. Loading local backup.");
         const local = localStorage.getItem('analystOS_Data');
         if(local) appState = JSON.parse(local);
     }
@@ -80,7 +96,8 @@ function checkEndOfMonth() {
     const today = new Date();
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     if(today.getDate() === lastDay) {
-        document.getElementById('backup-warning').style.display = 'flex';
+        const banner = document.getElementById('backup-warning');
+        if(banner) banner.style.display = 'flex';
     }
 }
 
@@ -88,24 +105,24 @@ window.exportData = function() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appState, null, 2));
     const anchor = document.createElement('a');
     anchor.setAttribute("href", dataStr);
-    anchor.setAttribute("download", `AnalystOS_Backup_${new Date().toISOString().split('T')[0]}.json`);
+    anchor.setAttribute("download", `AnalystOS_Backup_${getLocalISODate()}.json`);
     anchor.click();
 };
 
 /* =========================================
-   3. TASK LOGIC (Fixing "Disappearing" Bug)
+   3. TASK LOGIC (FIXED)
    ========================================= */
 
 function renderTasks() {
-    // Clear Boards
     const ids = ['daily-todo', 'daily-progress', 'daily-done', 'weekly-todo', 'weekly-progress', 'weekly-done'];
     ids.forEach(id => {
         const el = document.getElementById(id);
         if(el) el.innerHTML = '';
     });
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalISODate(); // Uses corrected local time
     
+    // Calculate Week Range
     const curr = new Date();
     const first = curr.getDate() - curr.getDay(); 
     const last = first + 6; 
@@ -115,18 +132,20 @@ function renderTasks() {
     appState.tasks.forEach(task => {
         const card = createTaskCard(task);
         
-        // --- LOGIC FIX: TODAY'S FOCUS ---
-        // 1. If status is 'In Progress', show it (persistence).
-        // 2. If status is 'To Do' and Due Date <= Today, show it.
-        // 3. If status is 'Done' and finished Today, show it.
-        
+        // --- LOGIC: TODAY'S FOCUS ---
         let showDaily = false;
+
+        // 1. In Progress: ALWAYS SHOW (regardless of date)
         if (task.status === 'In Progress') {
-            showDaily = true; // Always show active tasks
-        } else if (task.status === 'To Do' && task.dueDate <= today) {
-            showDaily = true;
-        } else if (task.status === 'Done' && task.completedDate === today) {
-            showDaily = true;
+            showDaily = true; 
+        } 
+        // 2. To Do: Show if Due Date is Today OR Overdue
+        else if (task.status === 'To Do') {
+             if (task.dueDate <= today) showDaily = true;
+        } 
+        // 3. Done: Show only if finished Today
+        else if (task.status === 'Done') {
+            if (task.completedDate === today) showDaily = true;
         }
 
         if (showDaily) {
@@ -135,8 +154,7 @@ function renderTasks() {
             if(col) col.appendChild(card.cloneNode(true));
         }
 
-        // --- WEEKLY BOARD ---
-        // Show everything relevant to this week
+        // --- LOGIC: WEEKLY BOARD ---
         if (task.dueDate >= firstday && task.dueDate <= lastday) {
             const colId = `weekly-${task.status.toLowerCase().replace(' ', '')}`;
             const col = document.getElementById(colId);
@@ -148,7 +166,7 @@ function renderTasks() {
         }
     });
 
-    // Re-attach listeners to daily clones
+    // Re-attach listeners
     ids.forEach(id => {
         if(id.includes('daily')) {
             const col = document.getElementById(id);
@@ -217,25 +235,24 @@ function populateCatDropdown(selected = '') {
 }
 
 /* =========================================
-   4. JOURNAL LOGIC (Formatted Copy)
+   4. JOURNAL LOGIC
    ========================================= */
 
 function renderJournal() {
     const container = document.getElementById('journal-feed');
     container.innerHTML = '';
-    
     const sorted = [...appState.journal].sort((a,b) => new Date(b.date) - new Date(a.date));
 
     sorted.forEach(entry => {
         const div = document.createElement('div');
         div.className = 'journal-entry';
 
-        // Format Date to DD/MM/YY
+        // Fix date format
         const dateParts = entry.date.split('-'); 
-        const day = dateParts[2];
-        const month = dateParts[1];
-        const year = dateParts[0].slice(-2);
-        const formattedDate = `${day}/${month}/${year}`;
+        let formattedDate = entry.date;
+        if(dateParts.length === 3) {
+            formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0].slice(-2)}`;
+        }
 
         const copyText = `Todays Recap: (${formattedDate}) [${entry.time}]\n${entry.recap}\n\nTomorrows plans:\n${entry.plan}`;
         const encodedText = encodeURIComponent(copyText);
@@ -250,14 +267,8 @@ function renderJournal() {
                     <button class="j-edit-btn" onclick="window.openJournalModal('${entry.id}')">Edit</button>
                 </div>
             </div>
-            <div class="j-block">
-                <h4>Recap</h4>
-                <div class="j-text">${entry.recap}</div>
-            </div>
-            <div class="j-block">
-                <h4>Tomorrow's Plan</h4>
-                <div class="j-text">${entry.plan}</div>
-            </div>
+            <div class="j-block"><h4>Recap</h4><div class="j-text">${entry.recap}</div></div>
+            <div class="j-block"><h4>Tomorrow's Plan</h4><div class="j-text">${entry.plan}</div></div>
             ${entry.notes ? `<div class="j-block"><h4>Notes</h4><div class="j-text" style="font-style:italic">${entry.notes}</div></div>` : ''}
         `;
         container.appendChild(div);
@@ -276,21 +287,17 @@ window.copyToClipboard = function(btn, textEncoded) {
 /* =========================================
    5. MILESTONE LOGIC
    ========================================= */
-
 let currentMilestoneView = 'kanban';
 
 window.switchMilestoneView = function(viewName) {
     currentMilestoneView = viewName;
-    const btns = document.querySelectorAll('.view-btn');
-    btns.forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
     
-    if (viewName === 'kanban') btns[0].classList.add('active');
-    else if (viewName === 'list') btns[1].classList.add('active');
-    else if (viewName === 'calendar') btns[2].classList.add('active');
+    const index = viewName === 'kanban' ? 0 : viewName === 'list' ? 1 : 2;
+    document.querySelectorAll('.view-btn')[index].classList.add('active');
     
     document.querySelectorAll('.ms-view-container').forEach(c => c.classList.remove('active'));
     document.getElementById(`ms-${viewName}`).classList.add('active');
-    
     renderMilestones();
 };
 
@@ -302,10 +309,8 @@ function renderMilestones() {
 
 function renderMSKanban() {
     const cols = { 'Planned': [], 'In Progress': [], 'Mastered': [] };
-    appState.milestones.forEach(m => {
-        if(cols[m.status]) cols[m.status].push(m);
-    });
-
+    appState.milestones.forEach(m => { if(cols[m.status]) cols[m.status].push(m); });
+    
     ['Planned', 'In Progress', 'Mastered'].forEach(status => {
         const colId = `ms-col-${status === 'Planned' ? 'todo' : status === 'In Progress' ? 'progress' : 'done'}`;
         const container = document.getElementById(colId);
@@ -331,7 +336,7 @@ function renderMSKanban() {
 function renderMSList() {
     const tbody = document.getElementById('ms-table-body');
     tbody.innerHTML = appState.milestones.map(m => `
-        <tr onclick="window.openMilestoneModal('${m.id}')" style="cursor:pointer">
+        <tr onclick="window.openMilestoneModal('${m.id}')">
             <td>${m.title}</td>
             <td>${m.targetDate}</td>
             <td>${m.progress}%</td>
@@ -350,7 +355,7 @@ function renderMSCalendar() {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    for(let i=0; i<firstDay; i++) { grid.appendChild(document.createElement('div')); }
+    for(let i=0; i<firstDay; i++) grid.appendChild(document.createElement('div'));
 
     for(let i=1; i<=daysInMonth; i++) {
         const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
@@ -358,8 +363,7 @@ function renderMSCalendar() {
         div.className = 'cal-day';
         if(i === now.getDate()) div.classList.add('today');
         div.innerHTML = `<span>${i}</span>`;
-        const dayMS = appState.milestones.filter(m => m.targetDate === dateStr);
-        dayMS.forEach(m => {
+        appState.milestones.filter(m => m.targetDate === dateStr).forEach(m => {
             const item = document.createElement('div');
             item.className = 'cal-item';
             item.innerText = m.title;
@@ -371,20 +375,17 @@ function renderMSCalendar() {
 }
 
 /* =========================================
-   6. HISTORY LOGIC (New)
+   6. HISTORY LOGIC
    ========================================= */
 
 window.renderHistory = function() {
     const tbody = document.getElementById('history-table-body');
     tbody.innerHTML = '';
-    
     const filter = document.getElementById('history-filter').value;
     const now = new Date();
     
-    // Get all DONE tasks
     let doneTasks = appState.tasks.filter(t => t.status === 'Done');
 
-    // Filter Logic
     if (filter === 'last-week') {
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(now.getDate() - 7);
@@ -395,7 +396,6 @@ window.renderHistory = function() {
         doneTasks = doneTasks.filter(t => new Date(t.completedDate) >= oneMonthAgo);
     }
 
-    // Sort by completion date descending
     doneTasks.sort((a,b) => new Date(b.completedDate) - new Date(a.completedDate));
 
     doneTasks.forEach(task => {
@@ -406,7 +406,6 @@ window.renderHistory = function() {
             <td>${task.completedDate || 'Unknown'}</td>
             <td><span class="priority-tag p-Low" style="position:static; display:inline-block; margin-right:5px; background:var(--s-done)"></span> Done (Revert)</td>
         `;
-        // Click to Revert
         tr.onclick = () => {
             if(confirm(`Move "${task.title}" back to In Progress?`)) {
                 task.status = 'In Progress';
@@ -414,7 +413,6 @@ window.renderHistory = function() {
                 window.saveData();
                 renderTasks();
                 renderHistory();
-                alert('Task moved back to board.');
             }
         };
         tbody.appendChild(tr);
@@ -422,7 +420,7 @@ window.renderHistory = function() {
 };
 
 /* =========================================
-   7. MODALS & FORM SUBMITS
+   7. FORM & MODAL HANDLERS
    ========================================= */
 
 window.openTaskModal = function(id = null) {
@@ -439,12 +437,12 @@ window.openTaskModal = function(id = null) {
         document.getElementById('t-date').value = t.dueDate;
         document.getElementById('t-priority').value = t.priority;
         document.getElementById('t-status').value = t.status;
-        document.getElementById('t-notes').value = t.notes || ''; // Load comments
+        document.getElementById('t-notes').value = t.notes || '';
         populateCatDropdown(t.category);
         document.getElementById('btn-delete-task').classList.remove('delete-btn-hidden');
     } else {
         document.getElementById('task-id').value = '';
-        document.getElementById('t-date').valueAsDate = new Date();
+        document.getElementById('t-date').value = getLocalISODate();
         document.getElementById('btn-delete-task').classList.add('delete-btn-hidden');
     }
     modal.style.display = 'flex';
@@ -465,7 +463,7 @@ window.openJournalModal = function(id = null) {
         document.getElementById('j-notes').value = j.notes || '';
     } else {
         document.getElementById('j-id').value = '';
-        document.getElementById('j-date').valueAsDate = new Date();
+        document.getElementById('j-date').value = getLocalISODate();
     }
     modal.style.display = 'flex';
 };
@@ -474,7 +472,6 @@ window.openMilestoneModal = function(id = null) {
     const modal = document.getElementById('milestone-modal');
     const form = document.getElementById('milestone-form');
     form.reset();
-
     if(id) {
         const m = appState.milestones.find(x => x.id === id);
         document.getElementById('m-id').value = m.id;
@@ -494,13 +491,11 @@ window.openMilestoneModal = function(id = null) {
 
 window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
 
-// --- SUBMIT HANDLERS ---
-
+// Submits
 document.getElementById('task-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const id = document.getElementById('task-id').value;
     const status = document.getElementById('t-status').value;
-    
     const task = {
         id: id || generateUUID(),
         title: document.getElementById('t-title').value,
@@ -508,14 +503,12 @@ document.getElementById('task-form').addEventListener('submit', (e) => {
         priority: document.getElementById('t-priority').value,
         category: document.getElementById('t-category').value,
         status: status,
-        notes: document.getElementById('t-notes').value, // Save comments
-        // If marking done, save date. If moving back, clear date.
-        completedDate: status === 'Done' ? new Date().toISOString().split('T')[0] : null
+        notes: document.getElementById('t-notes').value,
+        completedDate: status === 'Done' ? getLocalISODate() : null
     };
     
     if(id) {
         const idx = appState.tasks.findIndex(t => t.id === id);
-        // Preserve original completion date if just editing a done task
         if (appState.tasks[idx].status === 'Done' && status === 'Done') {
             task.completedDate = appState.tasks[idx].completedDate; 
         }
@@ -539,12 +532,10 @@ document.getElementById('journal-form').addEventListener('submit', (e) => {
         plan: document.getElementById('j-plan').value,
         notes: document.getElementById('j-notes').value
     };
-
     if(id) {
         const idx = appState.journal.findIndex(j => j.id === id);
         appState.journal[idx] = entry;
     } else appState.journal.push(entry);
-
     window.saveData();
     renderJournal();
     window.closeModal('journal-modal');
@@ -561,18 +552,15 @@ document.getElementById('milestone-form').addEventListener('submit', (e) => {
         details: document.getElementById('m-details').value,
         progress: document.getElementById('m-progress').value
     };
-
     if(id) {
         const idx = appState.milestones.findIndex(m => m.id === id);
         appState.milestones[idx] = ms;
     } else appState.milestones.push(ms);
-
     window.saveData();
     renderMilestones();
     window.closeModal('milestone-modal');
 });
 
-// Deletion
 window.deleteCurrentTask = function() {
     if(confirm('Delete?')) {
         appState.tasks = appState.tasks.filter(t => t.id !== document.getElementById('task-id').value);
@@ -587,7 +575,6 @@ window.deleteCurrentMS = function() {
     }
 };
 
-// Utils
 function updateDateDisplay() {
     const options = { weekday: 'long', month: 'long', day: 'numeric' };
     document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('en-US', options);
@@ -604,31 +591,19 @@ document.getElementById('theme-toggle').addEventListener('click', () => {
     window.saveData();
 });
 
-document.getElementById('refresh-btn').addEventListener('click', () => {
-    window.loadData();
-    alert('Synced with cloud.');
-});
-
+document.getElementById('refresh-btn').addEventListener('click', () => { window.loadData(); alert('Synced.'); });
 document.getElementById('export-btn').addEventListener('click', window.exportData);
 
-// Init
 window.addEventListener('DOMContentLoaded', () => {
-    // Navigation
     document.querySelectorAll('.nav-links li').forEach(li => {
         li.addEventListener('click', () => {
             document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
             li.classList.add('active');
             document.getElementById(li.dataset.tab).classList.add('active-view');
-            // If History tab, render logic
             if(li.dataset.tab === 'history-view') window.renderHistory();
         });
     });
-    
-    // Close modal outside click
-    window.onclick = (e) => {
-        if (e.target.classList.contains('modal')) e.target.style.display = 'none';
-    };
-    
+    window.onclick = (e) => { if (e.target.classList.contains('modal')) e.target.style.display = 'none'; };
     window.loadData();
 });
