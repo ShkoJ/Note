@@ -54,12 +54,18 @@
             <header class="top-bar">
                 <div>
                     <h1>Tasks</h1>
-                    <p class="subtitle" id="current-date-display">Today</p>
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
+                        <p class="subtitle" id="current-date-display">Today</p>
+                        <select id="board-project-filter" onchange="window.renderTasks()" class="header-filter">
+                            <option value="All">All Projects</option>
+                            </select>
+                    </div>
                 </div>
                 <button class="btn-black" onclick="window.openTaskModal()">
                     <i class="fa-solid fa-plus"></i> New Task
                 </button>
             </header>
+
             <div class="board-section">
                 <h3>Today's Focus</h3>
                 <div class="kanban-board compact-board">
@@ -68,6 +74,7 @@
                     <div class="kanban-column" data-status="Done" id="daily-done"></div>
                 </div>
             </div>
+
             <div class="board-section">
                 <h3>This Week / Upcoming</h3>
                 <div class="kanban-board">
@@ -98,16 +105,11 @@
                     </button>
                 </div>
             </header>
-
-            <h3 style="margin-bottom:15px; font-size:0.9rem; color:var(--text-muted);"><i class="fa-solid fa-thumbtack"></i> Pinned / Important</h3>
-            <div id="pinned-notes-container" class="notes-grid">
-                </div>
-
+            <h3 style="margin-bottom:15px; font-size:0.9rem; color:var(--text-muted);"><i class="fa-solid fa-thumbtack"></i> Pinned</h3>
+            <div id="pinned-notes-container" class="notes-grid"></div>
             <hr style="margin: 30px 0; border:none; border-top:1px solid var(--border);">
-
             <h3 style="margin-bottom:15px; font-size:0.9rem; color:var(--text-muted);">Timeline</h3>
-            <div id="all-notes-container" class="notes-list">
-                </div>
+            <div id="all-notes-container" class="notes-list"></div>
         </section>
 
         <section id="milestones-view" class="view">
@@ -152,11 +154,11 @@
             </header>
             <div class="history-dashboard">
                 <div class="dash-card"><h3>Completed</h3><div class="dash-num" id="dash-total">0</div></div>
-                <div class="dash-card"><h3>Top Category</h3><div class="dash-text" id="dash-cat">-</div></div>
+                <div class="dash-card"><h3>Top Project</h3><div class="dash-text" id="dash-cat">-</div></div>
             </div>
             <div class="history-container">
                 <table class="simple-table">
-                    <thead><tr><th>Task</th><th>Category</th><th>Completed Date</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Task</th><th>Project</th><th>Category</th><th>Date</th><th>Action</th></tr></thead>
                     <tbody id="history-table-body"></tbody>
                 </table>
             </div>
@@ -171,18 +173,42 @@
             <form id="task-form">
                 <input type="hidden" id="task-id">
                 <div class="form-group"><label>Title</label><input type="text" id="t-title" required placeholder="Task name"></div>
+                
                 <div class="form-group two-col">
                     <div><label>Due Date</label><input type="date" id="t-date" required></div>
                     <div><label>Priority</label><select id="t-priority"><option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option></select></div>
                 </div>
+
                 <div class="form-group">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><label>Category</label><button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage</button></div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <label>Project (The Big Picture)</label>
+                        <button type="button" class="btn-text-small" onclick="window.toggleProjManager()">Manage Projects</button>
+                    </div>
+                    <div id="proj-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;">
+                        <div style="display:flex; gap:5px; margin-bottom:10px;">
+                            <input type="text" id="new-proj-input" placeholder="New Project Name">
+                            <button type="button" class="btn-black-small" onclick="window.addProject()">Add</button>
+                        </div>
+                        <div id="proj-list-display" class="cat-tags-list"></div>
+                    </div>
+                    <select id="t-project"><option value="">General Work</option></select>
+                </div>
+
+                <div class="form-group">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <label>Category (Type of Task)</label>
+                        <button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage Categories</button>
+                    </div>
                     <div id="cat-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;">
-                        <div style="display:flex; gap:5px; margin-bottom:10px;"><input type="text" id="new-cat-input" placeholder="New Category"><button type="button" class="btn-black-small" onclick="window.addCategory()">Add</button></div>
+                        <div style="display:flex; gap:5px; margin-bottom:10px;">
+                            <input type="text" id="new-cat-input" placeholder="New Category">
+                            <button type="button" class="btn-black-small" onclick="window.addCategory()">Add</button>
+                        </div>
                         <div id="cat-list-display" class="cat-tags-list"></div>
                     </div>
                     <select id="t-category"><option value="">No Category</option></select>
                 </div>
+
                 <div class="form-group"><label>Details & Comments</label><textarea id="t-notes" rows="4"></textarea></div>
                 <div class="form-group"><label>Status</label><select id="t-status"><option value="To Do">To Do</option><option value="In Progress">In Progress</option><option value="Done">Done</option></select></div>
                 <div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-task" onclick="window.deleteCurrentTask()">Delete</button><button type="submit" class="btn-black">Save Task</button></div>
@@ -213,20 +239,10 @@
                 <input type="hidden" id="n-id">
                 <div class="form-group two-col">
                     <div><label>Date</label><input type="date" id="n-date" required></div>
-                    <div style="display:flex; align-items:flex-end;">
-                        <label style="cursor:pointer; display:flex; align-items:center; gap:8px;">
-                            <input type="checkbox" id="n-pinned" style="width:auto;"> Pin to Dashboard
-                        </label>
-                    </div>
+                    <div style="display:flex; align-items:flex-end;"><label style="cursor:pointer; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="n-pinned" style="width:auto;"> Pin to Dashboard</label></div>
                 </div>
-                <div class="form-group">
-                    <label>Content</label>
-                    <textarea id="n-content" rows="8" required placeholder="Write your thoughts, rules, or reminders here..."></textarea>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn-text delete-btn-hidden" id="btn-delete-note" onclick="window.deleteCurrentNote()">Delete</button>
-                    <button type="submit" class="btn-black">Save Note</button>
-                </div>
+                <div class="form-group"><label>Content</label><textarea id="n-content" rows="8" required></textarea></div>
+                <div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-note" onclick="window.deleteCurrentNote()">Delete</button><button type="submit" class="btn-black">Save Note</button></div>
             </form>
         </div>
     </div>
