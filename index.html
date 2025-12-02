@@ -23,11 +23,14 @@
             <li data-tab="journal-view">
                 <i class="fa-solid fa-align-left"></i> Daily Recaps
             </li>
+            <li data-tab="notes-view">
+                <i class="fa-solid fa-sticky-note"></i> Notes
+            </li>
             <li data-tab="milestones-view">
                 <i class="fa-solid fa-flag-checkered"></i> Milestones
             </li>
             <li data-tab="history-view">
-                <i class="fa-solid fa-chart-pie"></i> History
+                <i class="fa-solid fa-clock-rotate-left"></i> History
             </li>
         </ul>
 
@@ -57,7 +60,6 @@
                     <i class="fa-solid fa-plus"></i> New Task
                 </button>
             </header>
-
             <div class="board-section">
                 <h3>Today's Focus</h3>
                 <div class="kanban-board compact-board">
@@ -66,7 +68,6 @@
                     <div class="kanban-column" data-status="Done" id="daily-done"></div>
                 </div>
             </div>
-
             <div class="board-section">
                 <h3>This Week / Upcoming</h3>
                 <div class="kanban-board">
@@ -85,6 +86,28 @@
                 </button>
             </header>
             <div id="journal-feed" class="journal-container"></div>
+        </section>
+
+        <section id="notes-view" class="view">
+            <header class="top-bar">
+                <h1>Personal Notes</h1>
+                <div style="display:flex; gap:10px;">
+                    <input type="date" id="notes-date-filter" onchange="window.renderNotes()" style="padding:8px; width:auto;">
+                    <button class="btn-black" onclick="window.openNoteModal()">
+                        <i class="fa-solid fa-plus"></i> Add Note
+                    </button>
+                </div>
+            </header>
+
+            <h3 style="margin-bottom:15px; font-size:0.9rem; color:var(--text-muted);"><i class="fa-solid fa-thumbtack"></i> Pinned / Important</h3>
+            <div id="pinned-notes-container" class="notes-grid">
+                </div>
+
+            <hr style="margin: 30px 0; border:none; border-top:1px solid var(--border);">
+
+            <h3 style="margin-bottom:15px; font-size:0.9rem; color:var(--text-muted);">Timeline</h3>
+            <div id="all-notes-container" class="notes-list">
+                </div>
         </section>
 
         <section id="milestones-view" class="view">
@@ -127,34 +150,14 @@
                     <option value="last-month">Last Month</option>
                 </select>
             </header>
-
             <div class="history-dashboard">
-                <div class="dash-card">
-                    <h3>Total Completed</h3>
-                    <div class="dash-num" id="dash-total">0</div>
-                </div>
-                <div class="dash-card">
-                    <h3>Top Category</h3>
-                    <div class="dash-text" id="dash-cat">-</div>
-                </div>
-                <div class="dash-card">
-                    <h3>Efficiency</h3>
-                    <div class="dash-text" id="dash-eff">100%</div>
-                </div>
+                <div class="dash-card"><h3>Completed</h3><div class="dash-num" id="dash-total">0</div></div>
+                <div class="dash-card"><h3>Top Category</h3><div class="dash-text" id="dash-cat">-</div></div>
             </div>
-
             <div class="history-container">
                 <table class="simple-table">
-                    <thead>
-                        <tr>
-                            <th>Task</th>
-                            <th>Category</th>
-                            <th>Completed Date</th>
-                            <th>Status (Click to Revert)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-table-body">
-                        </tbody>
+                    <thead><tr><th>Task</th><th>Category</th><th>Completed Date</th><th>Status</th></tr></thead>
+                    <tbody id="history-table-body"></tbody>
                 </table>
             </div>
         </section>
@@ -167,62 +170,22 @@
             <h2 id="task-modal-title">Task</h2>
             <form id="task-form">
                 <input type="hidden" id="task-id">
-                
-                <div class="form-group">
-                    <label>Title</label>
-                    <input type="text" id="t-title" required placeholder="What needs to be done?">
-                </div>
-
+                <div class="form-group"><label>Title</label><input type="text" id="t-title" required placeholder="Task name"></div>
                 <div class="form-group two-col">
-                    <div>
-                        <label>Due Date</label>
-                        <input type="date" id="t-date" required>
-                    </div>
-                    <div>
-                        <label>Priority</label>
-                        <select id="t-priority">
-                            <option value="Low">Low</option>
-                            <option value="Medium" selected>Medium</option>
-                            <option value="High">High</option>
-                        </select>
-                    </div>
+                    <div><label>Due Date</label><input type="date" id="t-date" required></div>
+                    <div><label>Priority</label><select id="t-priority"><option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option></select></div>
                 </div>
-
                 <div class="form-group">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                        <label>Category</label>
-                        <button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage</button>
-                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><label>Category</label><button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage</button></div>
                     <div id="cat-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;">
-                        <div style="display:flex; gap:5px; margin-bottom:10px;">
-                            <input type="text" id="new-cat-input" placeholder="New Category">
-                            <button type="button" class="btn-black-small" onclick="window.addCategory()">Add</button>
-                        </div>
+                        <div style="display:flex; gap:5px; margin-bottom:10px;"><input type="text" id="new-cat-input" placeholder="New Category"><button type="button" class="btn-black-small" onclick="window.addCategory()">Add</button></div>
                         <div id="cat-list-display" class="cat-tags-list"></div>
                     </div>
-                    <select id="t-category">
-                        <option value="">No Category</option>
-                    </select>
+                    <select id="t-category"><option value="">No Category</option></select>
                 </div>
-
-                <div class="form-group">
-                    <label>Details & Comments</label>
-                    <textarea id="t-notes" rows="4" placeholder="Add updates or details..."></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label>Status</label>
-                    <select id="t-status">
-                        <option value="To Do">To Do</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Done">Done</option>
-                    </select>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn-text delete-btn-hidden" id="btn-delete-task" onclick="window.deleteCurrentTask()">Delete</button>
-                    <button type="submit" class="btn-black">Save Task</button>
-                </div>
+                <div class="form-group"><label>Details & Comments</label><textarea id="t-notes" rows="4"></textarea></div>
+                <div class="form-group"><label>Status</label><select id="t-status"><option value="To Do">To Do</option><option value="In Progress">In Progress</option><option value="Done">Done</option></select></div>
+                <div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-task" onclick="window.deleteCurrentTask()">Delete</button><button type="submit" class="btn-black">Save Task</button></div>
             </form>
         </div>
     </div>
@@ -233,29 +196,37 @@
             <h2 id="journal-modal-title">Daily Update</h2>
             <form id="journal-form">
                 <input type="hidden" id="j-id">
-                <div class="form-group two-col">
-                    <div>
-                        <label>Date</label>
-                        <input type="date" id="j-date" required>
-                    </div>
-                    <div>
-                        <label>Time</label>
-                        <input type="text" id="j-time" placeholder="10:00 - 18:00" required>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Today's Recap</label>
-                    <textarea id="j-recap" rows="5" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Tomorrow's Plan</label>
-                    <textarea id="j-plan" rows="4" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Notes</label>
-                    <textarea id="j-notes" rows="2"></textarea>
-                </div>
+                <div class="form-group two-col"><div><label>Date</label><input type="date" id="j-date" required></div><div><label>Time</label><input type="text" id="j-time" placeholder="10:00 - 18:00" required></div></div>
+                <div class="form-group"><label>Today's Recap</label><textarea id="j-recap" rows="5" required></textarea></div>
+                <div class="form-group"><label>Tomorrow's Plan</label><textarea id="j-plan" rows="4" required></textarea></div>
+                <div class="form-group"><label>Notes</label><textarea id="j-notes" rows="2"></textarea></div>
                 <button type="submit" class="btn-black full-width">Save Entry</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="note-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="window.closeModal('note-modal')">&times;</span>
+            <h2>Quick Note</h2>
+            <form id="note-form">
+                <input type="hidden" id="n-id">
+                <div class="form-group two-col">
+                    <div><label>Date</label><input type="date" id="n-date" required></div>
+                    <div style="display:flex; align-items:flex-end;">
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" id="n-pinned" style="width:auto;"> Pin to Dashboard
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Content</label>
+                    <textarea id="n-content" rows="8" required placeholder="Write your thoughts, rules, or reminders here..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-text delete-btn-hidden" id="btn-delete-note" onclick="window.deleteCurrentNote()">Delete</button>
+                    <button type="submit" class="btn-black">Save Note</button>
+                </div>
             </form>
         </div>
     </div>
@@ -266,37 +237,11 @@
             <h2 id="ms-modal-title">Milestone</h2>
             <form id="milestone-form">
                 <input type="hidden" id="m-id">
-                <div class="form-group">
-                    <label>Title</label>
-                    <input type="text" id="m-title" required>
-                </div>
-                <div class="form-group two-col">
-                    <div>
-                        <label>Date</label>
-                        <input type="date" id="m-date" required>
-                    </div>
-                    <div>
-                        <label>Status</label>
-                        <select id="m-status">
-                            <option value="Planned">Planned</option>
-                            <option value="In Progress">In Progress</option>
-                            <option value="Mastered">Mastered</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Details</label>
-                    <textarea id="m-details" rows="4"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Progress</label>
-                    <input type="range" id="m-progress" min="0" max="100" value="0" oninput="document.getElementById('m-prog-val').innerText = this.value + '%'">
-                    <span id="m-prog-val">0%</span>
-                </div>
-                <div class="modal-actions">
-                     <button type="button" class="btn-text delete-btn-hidden" id="btn-delete-ms" onclick="window.deleteCurrentMS()">Delete</button>
-                    <button type="submit" class="btn-black">Save</button>
-                </div>
+                <div class="form-group"><label>Title</label><input type="text" id="m-title" required></div>
+                <div class="form-group two-col"><div><label>Date</label><input type="date" id="m-date" required></div><div><label>Status</label><select id="m-status"><option value="Planned">Planned</option><option value="In Progress">In Progress</option><option value="Mastered">Mastered</option></select></div></div>
+                <div class="form-group"><label>Details</label><textarea id="m-details" rows="4"></textarea></div>
+                <div class="form-group"><label>Progress</label><input type="range" id="m-progress" min="0" max="100" value="0" oninput="document.getElementById('m-prog-val').innerText = this.value + '%'"><span id="m-prog-val">0%</span></div>
+                <div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-ms" onclick="window.deleteCurrentMS()">Delete</button><button type="submit" class="btn-black">Save</button></div>
             </form>
         </div>
     </div>
