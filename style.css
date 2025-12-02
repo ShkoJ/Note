@@ -446,3 +446,27 @@ input:focus, textarea:focus, select:focus {
     .kanban-board { flex-direction: column; overflow: visible; }
     .kanban-column { min-width: auto; }
 }
+/* Add to your CSS file */
+.k-proj { 
+    display: inline-block; 
+    font-size: 0.65rem; 
+    font-weight: 800; 
+    text-transform: uppercase; 
+    margin-bottom: 10px; 
+    margin-right: 5px; /* Spacing between tags */
+    color: var(--bg-body); 
+    background: var(--text-main); /* Inverse colors for Project */
+    padding: 4px 8px; 
+    border-radius: 6px; 
+    letter-spacing: 0.5px;
+}
+.header-filter {
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
