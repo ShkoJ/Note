@@ -90,6 +90,17 @@ h1 { font-weight: 700; font-size: 2.2rem; letter-spacing: -1px; }
 .priority-tag { width: 8px; height: 8px; border-radius: 50%; position: absolute; top: 15px; right: 15px; }
 .p-High { background: #ff4d4d; } .p-Medium { background: #ffcc00; } .p-Low { background: #00cc66; }
 
+/* Notes Section */
+.notes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+.note-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; position: relative; transition: transform 0.2s; }
+.note-card.pinned { border-left: 4px solid var(--accent); box-shadow: var(--shadow); }
+.note-card:hover { transform: translateY(-3px); }
+.n-meta { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px; }
+.n-text { white-space: pre-wrap; font-size: 0.9rem; line-height: 1.5; }
+.pinned-icon { position: absolute; top: -10px; right: -5px; color: var(--accent); background: var(--bg-body); border-radius: 50%; padding: 5px; border: 1px solid var(--border); }
+.notes-list { display: flex; flex-direction: column; gap: 15px; }
+.note-list-item { background: var(--highlight); padding: 15px; border-radius: var(--radius); cursor: pointer; }
+
 /* Journal */
 .journal-container { max-width: 800px; margin: 0 auto; }
 .journal-entry { border-left: 3px solid var(--accent); padding-left: 20px; margin-bottom: 40px; position: relative; }
@@ -99,27 +110,33 @@ h1 { font-weight: 700; font-size: 2.2rem; letter-spacing: -1px; }
 .j-block h4 { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
 .j-text { white-space: pre-wrap; font-size: 0.95rem; line-height: 1.6; }
 
-/* Milestones & History Views */
+/* History Dash */
+.history-dashboard { display: flex; gap: 20px; margin-bottom: 30px; }
+.dash-card { flex: 1; background: var(--highlight); padding: 20px; border-radius: var(--radius); text-align: center; border: 1px solid var(--border); }
+.dash-card h3 { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+.dash-num { font-size: 2.5rem; font-weight: 800; color: var(--accent); }
+.dash-text { font-size: 1.5rem; font-weight: 700; color: var(--text-main); }
+
+/* Views & Tables */
 .view-switcher { display: flex; gap: 5px; background: var(--highlight); padding: 5px; border-radius: 6px; }
 .view-btn { background: transparent; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; color: var(--text-muted); }
 .view-btn.active { background: var(--bg-card); color: var(--accent); box-shadow: var(--shadow); }
 .ms-view-container { display: none; margin-top: 20px; }
 .ms-view-container.active { display: block; }
 
-/* Tables (Used for History & List View) */
 .simple-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .simple-table th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); color: var(--text-muted); }
 .simple-table td { padding: 12px; border-bottom: 1px solid var(--border); }
 .simple-table tr:hover { background: var(--highlight); cursor: pointer; }
 
-/* Calendar View */
+/* Calendar */
 .calendar-header { text-align: center; margin-bottom: 20px; font-weight: 700; font-size: 1.2rem; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
 .cal-day { min-height: 100px; border: 1px solid var(--border); padding: 5px; border-radius: 4px; font-size: 0.8rem; background: var(--bg-card); position: relative; }
 .cal-day.today { border-color: var(--accent); font-weight: 700; }
 .cal-item { font-size: 0.7rem; background: var(--accent); color: var(--bg-body); padding: 2px 4px; border-radius: 2px; margin-top: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Modals & Forms */
+/* Modals */
 .modal { display: none; position: fixed; z-index: 200; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; backdrop-filter: blur(2px); }
 .modal-content { background: var(--bg-card); padding: 30px; width: 450px; border-radius: var(--radius); border: 1px solid var(--border); max-height: 90vh; overflow-y: auto; }
 .large-modal { width: 700px; }
@@ -134,41 +151,3 @@ input:focus, textarea:focus { outline: 1px solid var(--accent); border-color: va
 /* Category Tags */
 .cat-tag-manage { display: inline-flex; align-items: center; gap: 5px; background: var(--highlight); padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; margin: 2px; }
 .cat-remove { cursor: pointer; color: #ff4d4d; font-weight: bold; }
-
-/* ... KEEP YOUR EXISTING CSS ... */
-
-/* Add this to the bottom or replace your CSS file with this snippet added */
-
-.history-dashboard {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-.dash-card {
-    flex: 1;
-    background: var(--highlight);
-    padding: 20px;
-    border-radius: var(--radius);
-    text-align: center;
-    border: 1px solid var(--border);
-}
-
-.dash-card h3 {
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-}
-
-.dash-num {
-    font-size: 2.5rem;
-    font-weight: 800;
-    color: var(--accent);
-}
-
-.dash-text {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text-main);
-}
