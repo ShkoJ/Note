@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analyst Work Tracker</title>
-    
     <link rel="icon" type="image/jpeg" href="small_cat.jpeg">
-
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -58,10 +56,15 @@
                 <div>
                     <h1>Tasks</h1>
                     <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
-                        <p class="subtitle" id="current-date-display">Today</p>
+                        <div class="view-switcher">
+                            <button class="view-btn active" onclick="window.switchTaskView('kanban')"><i class="fa-solid fa-columns"></i></button>
+                            <button class="view-btn" onclick="window.switchTaskView('list')"><i class="fa-solid fa-list"></i></button>
+                            <button class="view-btn" onclick="window.switchTaskView('calendar')"><i class="fa-solid fa-calendar"></i></button>
+                        </div>
+                        <span style="color:var(--border)">|</span>
                         <select id="board-project-filter" onchange="window.renderTasks()" class="header-filter">
                             <option value="All">All Projects</option>
-                            </select>
+                        </select>
                     </div>
                 </div>
                 <button class="btn-black" onclick="window.openTaskModal()">
@@ -69,23 +72,48 @@
                 </button>
             </header>
 
-            <div class="board-section">
-                <h3>Today's Focus</h3>
-                <div class="kanban-board compact-board">
-                    <div class="kanban-column" data-status="To Do" id="daily-todo"></div>
-                    <div class="kanban-column" data-status="In Progress" id="daily-progress"></div>
-                    <div class="kanban-column" data-status="Done" id="daily-done"></div>
+            <div id="tv-kanban" class="task-view-container active">
+                <div class="board-section">
+                    <h3>Today's Focus</h3>
+                    <div class="kanban-board compact-board">
+                        <div class="kanban-column" data-status="To Do" id="daily-todo"></div>
+                        <div class="kanban-column" data-status="In Progress" id="daily-progress"></div>
+                        <div class="kanban-column" data-status="Done" id="daily-done"></div>
+                    </div>
+                </div>
+                <div class="board-section">
+                    <h3>Upcoming</h3>
+                    <div class="kanban-board">
+                        <div class="kanban-column" data-status="To Do" id="weekly-todo"></div>
+                        <div class="kanban-column" data-status="In Progress" id="weekly-progress"></div>
+                        <div class="kanban-column" data-status="Done" id="weekly-done"></div>
+                    </div>
                 </div>
             </div>
 
-            <div class="board-section">
-                <h3>This Week / Upcoming</h3>
-                <div class="kanban-board">
-                    <div class="kanban-column" data-status="To Do" id="weekly-todo"></div>
-                    <div class="kanban-column" data-status="In Progress" id="weekly-progress"></div>
-                    <div class="kanban-column" data-status="Done" id="weekly-done"></div>
+            <div id="tv-list" class="task-view-container">
+                <div class="list-wrapper">
+                    <table class="simple-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Task</th>
+                                <th>Project</th>
+                                <th>Category</th>
+                                <th>Due Date</th>
+                                <th>Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody id="task-list-body"></tbody>
+                    </table>
                 </div>
             </div>
+
+            <div id="tv-calendar" class="task-view-container">
+                <div class="calendar-header"><h3 id="task-cal-month-name">Month</h3></div>
+                <div class="calendar-grid" id="task-calendar-grid"></div>
+            </div>
+
         </section>
 
         <section id="journal-view" class="view">
@@ -176,42 +204,20 @@
             <form id="task-form">
                 <input type="hidden" id="task-id">
                 <div class="form-group"><label>Title</label><input type="text" id="t-title" required placeholder="Task name"></div>
-                
                 <div class="form-group two-col">
                     <div><label>Due Date</label><input type="date" id="t-date" required></div>
                     <div><label>Priority</label><select id="t-priority"><option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option></select></div>
                 </div>
-
                 <div class="form-group">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                        <label>Project (The Big Picture)</label>
-                        <button type="button" class="btn-text-small" onclick="window.toggleProjManager()">Manage Projects</button>
-                    </div>
-                    <div id="proj-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;">
-                        <div style="display:flex; gap:5px; margin-bottom:10px;">
-                            <input type="text" id="new-proj-input" placeholder="New Project Name">
-                            <button type="button" class="btn-black-small" onclick="window.addProject()">Add</button>
-                        </div>
-                        <div id="proj-list-display" class="cat-tags-list"></div>
-                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><label>Project</label><button type="button" class="btn-text-small" onclick="window.toggleProjManager()">Manage</button></div>
+                    <div id="proj-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;"><div style="display:flex; gap:5px; margin-bottom:10px;"><input type="text" id="new-proj-input" placeholder="New Project"><button type="button" class="btn-black-small" onclick="window.addProject()">Add</button></div><div id="proj-list-display" class="cat-tags-list"></div></div>
                     <select id="t-project"><option value="">General Work</option></select>
                 </div>
-
                 <div class="form-group">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                        <label>Category (Type of Task)</label>
-                        <button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage Categories</button>
-                    </div>
-                    <div id="cat-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;">
-                        <div style="display:flex; gap:5px; margin-bottom:10px;">
-                            <input type="text" id="new-cat-input" placeholder="New Category">
-                            <button type="button" class="btn-black-small" onclick="window.addCategory()">Add</button>
-                        </div>
-                        <div id="cat-list-display" class="cat-tags-list"></div>
-                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;"><label>Category</label><button type="button" class="btn-text-small" onclick="window.toggleCatManager()">Manage</button></div>
+                    <div id="cat-manager" style="display:none; margin-bottom:10px; background:var(--bg-body); padding:10px; border-radius:4px;"><div style="display:flex; gap:5px; margin-bottom:10px;"><input type="text" id="new-cat-input" placeholder="New Category"><button type="button" class="btn-black-small" onclick="window.addCategory()">Add</button></div><div id="cat-list-display" class="cat-tags-list"></div></div>
                     <select id="t-category"><option value="">No Category</option></select>
                 </div>
-
                 <div class="form-group"><label>Details & Comments</label><textarea id="t-notes" rows="4"></textarea></div>
                 <div class="form-group"><label>Status</label><select id="t-status"><option value="To Do">To Do</option><option value="In Progress">In Progress</option><option value="Done">Done</option></select></div>
                 <div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-task" onclick="window.deleteCurrentTask()">Delete</button><button type="submit" class="btn-black">Save Task</button></div>
@@ -219,51 +225,9 @@
         </div>
     </div>
 
-    <div id="journal-modal" class="modal">
-        <div class="modal-content large-modal">
-            <span class="close-modal" onclick="window.closeModal('journal-modal')">&times;</span>
-            <h2 id="journal-modal-title">Daily Update</h2>
-            <form id="journal-form">
-                <input type="hidden" id="j-id">
-                <div class="form-group two-col"><div><label>Date</label><input type="date" id="j-date" required></div><div><label>Time</label><input type="text" id="j-time" placeholder="10:00 - 18:00" required></div></div>
-                <div class="form-group"><label>Today's Recap</label><textarea id="j-recap" rows="5" required></textarea></div>
-                <div class="form-group"><label>Tomorrow's Plan</label><textarea id="j-plan" rows="4" required></textarea></div>
-                <div class="form-group"><label>Notes</label><textarea id="j-notes" rows="2"></textarea></div>
-                <button type="submit" class="btn-black full-width">Save Entry</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="note-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal" onclick="window.closeModal('note-modal')">&times;</span>
-            <h2>Quick Note</h2>
-            <form id="note-form">
-                <input type="hidden" id="n-id">
-                <div class="form-group two-col">
-                    <div><label>Date</label><input type="date" id="n-date" required></div>
-                    <div style="display:flex; align-items:flex-end;"><label style="cursor:pointer; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="n-pinned" style="width:auto;"> Pin to Dashboard</label></div>
-                </div>
-                <div class="form-group"><label>Content</label><textarea id="n-content" rows="8" required></textarea></div>
-                <div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-note" onclick="window.deleteCurrentNote()">Delete</button><button type="submit" class="btn-black">Save Note</button></div>
-            </form>
-        </div>
-    </div>
-
-    <div id="milestone-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal" onclick="window.closeModal('milestone-modal')">&times;</span>
-            <h2 id="ms-modal-title">Milestone</h2>
-            <form id="milestone-form">
-                <input type="hidden" id="m-id">
-                <div class="form-group"><label>Title</label><input type="text" id="m-title" required></div>
-                <div class="form-group two-col"><div><label>Date</label><input type="date" id="m-date" required></div><div><label>Status</label><select id="m-status"><option value="Planned">Planned</option><option value="In Progress">In Progress</option><option value="Mastered">Mastered</option></select></div></div>
-                <div class="form-group"><label>Details</label><textarea id="m-details" rows="4"></textarea></div>
-                <div class="form-group"><label>Progress</label><input type="range" id="m-progress" min="0" max="100" value="0" oninput="document.getElementById('m-prog-val').innerText = this.value + '%'"><span id="m-prog-val">0%</span></div>
-                <div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-ms" onclick="window.deleteCurrentMS()">Delete</button><button type="submit" class="btn-black">Save</button></div>
-            </form>
-        </div>
-    </div>
+    <div id="journal-modal" class="modal"><div class="modal-content large-modal"><span class="close-modal" onclick="window.closeModal('journal-modal')">&times;</span><h2>Daily Update</h2><form id="journal-form"><input type="hidden" id="j-id"><div class="form-group two-col"><div><label>Date</label><input type="date" id="j-date" required></div><div><label>Time</label><input type="text" id="j-time" placeholder="10:00 - 18:00" required></div></div><div class="form-group"><label>Today's Recap</label><textarea id="j-recap" rows="5" required></textarea></div><div class="form-group"><label>Tomorrow's Plan</label><textarea id="j-plan" rows="4" required></textarea></div><div class="form-group"><label>Notes</label><textarea id="j-notes" rows="2"></textarea></div><button type="submit" class="btn-black full-width">Save Entry</button></form></div></div>
+    <div id="note-modal" class="modal"><div class="modal-content"><span class="close-modal" onclick="window.closeModal('note-modal')">&times;</span><h2>Quick Note</h2><form id="note-form"><input type="hidden" id="n-id"><div class="form-group two-col"><div><label>Date</label><input type="date" id="n-date" required></div><div style="display:flex; align-items:flex-end;"><label style="cursor:pointer; display:flex; align-items:center; gap:8px;"><input type="checkbox" id="n-pinned" style="width:auto;"> Pin to Dashboard</label></div></div><div class="form-group"><label>Content</label><textarea id="n-content" rows="8" required></textarea></div><div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-note" onclick="window.deleteCurrentNote()">Delete</button><button type="submit" class="btn-black">Save Note</button></div></form></div></div>
+    <div id="milestone-modal" class="modal"><div class="modal-content"><span class="close-modal" onclick="window.closeModal('milestone-modal')">&times;</span><h2 id="ms-modal-title">Milestone</h2><form id="milestone-form"><input type="hidden" id="m-id"><div class="form-group"><label>Title</label><input type="text" id="m-title" required></div><div class="form-group two-col"><div><label>Date</label><input type="date" id="m-date" required></div><div><label>Status</label><select id="m-status"><option value="Planned">Planned</option><option value="In Progress">In Progress</option><option value="Mastered">Mastered</option></select></div></div><div class="form-group"><label>Details</label><textarea id="m-details" rows="4"></textarea></div><div class="form-group"><label>Progress</label><input type="range" id="m-progress" min="0" max="100" value="0" oninput="document.getElementById('m-prog-val').innerText = this.value + '%'"><span id="m-prog-val">0%</span></div><div class="modal-actions"><button type="button" class="btn-text delete-btn-hidden" id="btn-delete-ms" onclick="window.deleteCurrentMS()">Delete</button><button type="submit" class="btn-black">Save</button></div></form></div></div>
 
     <script type="module" src="script.js"></script>
 </body>
