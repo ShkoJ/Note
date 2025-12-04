@@ -16,7 +16,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const docRef = doc(db, "userData", "my-tracker-v4"); // Version Bump for new structure
+const docRef = doc(db, "userData", "my-tracker-v4");
 
 /* =========================================
    2. DATA LAYER
@@ -28,11 +28,12 @@ const defaultState = {
     notes: [],
     milestones: [],
     categories: ['Meeting', 'Research', 'Admin', 'Design'],
-    projects: ['General Work', 'DMS Launch', 'CRM'], // New Project Field
+    projects: ['General Work', 'DMS Launch', 'CRM'],
     theme: 'light'
 };
 
 let appState = { ...defaultState };
+let currentTaskView = 'kanban'; // Track which view is active
 
 function getLocalISODate() {
     const d = new Date();
@@ -42,10 +43,8 @@ function getLocalISODate() {
 
 window.saveData = async function() {
     localStorage.setItem('analystOS_Data_v4', JSON.stringify(appState));
-    try {
-        await setDoc(docRef, appState);
-        console.log("Cloud synced.");
-    } catch (e) { console.error("Sync error:", e); }
+    try { await setDoc(docRef, appState); console.log("Cloud synced."); } 
+    catch (e) { console.error("Sync error:", e); }
 };
 
 window.loadData = async function() {
@@ -54,11 +53,7 @@ window.loadData = async function() {
         if (docSnap.exists()) {
             appState = docSnap.data();
             if(!appState.tasks) appState.tasks = [];
-            if(!appState.journal) appState.journal = [];
-            if(!appState.notes) appState.notes = [];
-            if(!appState.milestones) appState.milestones = [];
-            if(!appState.categories) appState.categories = ['General'];
-            if(!appState.projects) appState.projects = ['General Work']; // Ensure projects exist
+            if(!appState.projects) appState.projects = ['General Work'];
         } else {
             const local = localStorage.getItem('analystOS_Data_v4');
             if(local) appState = JSON.parse(local);
@@ -68,14 +63,13 @@ window.loadData = async function() {
         const local = localStorage.getItem('analystOS_Data_v4');
         if(local) appState = JSON.parse(local);
     }
-    
     applyTheme(appState.theme);
     checkEndOfMonth();
     renderAll();
 };
 
 function renderAll() {
-    renderTasks();
+    renderTasks(); // Dispatches to correct view
     renderJournal();
     renderNotes();
     renderMilestones();
@@ -100,87 +94,79 @@ window.exportData = function() {
 };
 
 /* =========================================
-   3. TASK LOGIC (With Project Filtering)
+   3. TASK LOGIC (DISPATCHER & VIEWS)
    ========================================= */
 
-function renderTasks() {
-    // Clear Boards
+window.switchTaskView = function(viewName) {
+    currentTaskView = viewName;
+    
+    // Update Button States
+    const btns = document.querySelectorAll('#tasks-view .view-switcher .view-btn');
+    btns.forEach(b => b.classList.remove('active'));
+    // Map viewName to index: kanban=0, list=1, calendar=2
+    const idx = viewName === 'kanban' ? 0 : viewName === 'list' ? 1 : 2;
+    if(btns[idx]) btns[idx].classList.add('active');
+
+    // Hide all containers, show active
+    document.querySelectorAll('.task-view-container').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tv-${viewName}`).classList.add('active');
+
+    renderTasks(); // Re-render the active view
+};
+
+window.renderTasks = function() {
+    // Check which view is active and render only that
+    if (currentTaskView === 'kanban') renderTasksKanban();
+    else if (currentTaskView === 'list') renderTasksList();
+    else if (currentTaskView === 'calendar') renderTasksCalendar();
+};
+
+// --- VIEW 1: KANBAN (Existing Logic) ---
+function renderTasksKanban() {
     const ids = ['daily-todo', 'daily-progress', 'daily-done', 'weekly-todo', 'weekly-progress', 'weekly-done'];
     ids.forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = ''; });
 
     const today = getLocalISODate();
     const projectFilter = document.getElementById('board-project-filter');
     
-    // Populate filter if empty
+    // Populate Filter if empty
     if(projectFilter.options.length <= 1) {
-        // Keep "All Projects" and append others
         appState.projects.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p;
-            opt.innerText = p;
-            projectFilter.appendChild(opt);
+            const opt = document.createElement('option'); opt.value = p; opt.innerText = p; projectFilter.appendChild(opt);
         });
     }
-
     const currentFilter = projectFilter.value;
 
     appState.tasks.forEach(task => {
-        // FILTER: Skip if task project doesn't match filter (unless All)
         const taskProject = task.project || 'General Work';
         if(currentFilter !== 'All' && taskProject !== currentFilter) return;
 
         const card = createTaskCard(task);
         
         if (task.status === 'In Progress') {
-            const col = document.getElementById('daily-progress');
-            if(col) col.appendChild(card.cloneNode(true));
-            return;
-        }
-
-        if (task.status === 'Done') {
-            if (task.completedDate === today) {
-                const col = document.getElementById('daily-done');
-                if(col) col.appendChild(card.cloneNode(true));
-            }
-            return;
-        }
-
-        if (task.status === 'To Do') {
-            if (task.dueDate <= today) {
-                const col = document.getElementById('daily-todo');
-                if(col) col.appendChild(card.cloneNode(true));
-            } else {
-                const col = document.getElementById('weekly-todo');
-                if(col) {
-                    const clone = card.cloneNode(true);
-                    clone.onclick = () => window.openTaskModal(task.id);
-                    col.appendChild(clone);
-                }
-            }
+            document.getElementById('daily-progress')?.appendChild(card.cloneNode(true));
+        } else if (task.status === 'Done') {
+            if (task.completedDate === today) document.getElementById('daily-done')?.appendChild(card.cloneNode(true));
+        } else if (task.status === 'To Do') {
+            if (task.dueDate <= today) document.getElementById('daily-todo')?.appendChild(card.cloneNode(true));
+            else document.getElementById('weekly-todo')?.appendChild(card.cloneNode(true));
         }
     });
 
+    // Re-attach listeners
     ids.forEach(id => {
         const col = document.getElementById(id);
-        if(col) {
-            col.childNodes.forEach(node => {
-                const taskId = node.dataset.id;
-                node.onclick = () => window.openTaskModal(taskId);
-            });
-        }
+        if(col) col.childNodes.forEach(node => { node.onclick = () => window.openTaskModal(node.dataset.id); });
     });
 }
 
 function createTaskCard(task) {
     const div = document.createElement('div');
     div.className = 'kanban-card';
-    div.draggable = true;
     div.dataset.id = task.id;
     const today = getLocalISODate();
     const isOverdue = task.status !== 'Done' && task.dueDate < today;
     const dateColor = isOverdue ? '#D44C47' : 'var(--text-muted)';
-    
-    // Project Tag Style
     const projectTag = task.project ? `<span class="k-proj">${task.project}</span>` : '';
     const catTag = task.category ? `<span class="k-cat">${task.category}</span>` : '';
 
@@ -190,56 +176,107 @@ function createTaskCard(task) {
         <div class="k-title">${task.title}</div>
         <div class="k-date" style="color:${dateColor}"><i class="fa-regular fa-calendar"></i> ${task.dueDate}</div>
     `;
-    div.onclick = () => window.openTaskModal(task.id);
     return div;
 }
 
-// === PROJECT & CATEGORY MANAGERS ===
+// --- VIEW 2: LIST (New) ---
+function renderTasksList() {
+    const tbody = document.getElementById('task-list-body');
+    tbody.innerHTML = '';
+    const currentFilter = document.getElementById('board-project-filter').value;
 
-// Toggle Managers
+    // Filter & Sort by Date
+    let tasks = appState.tasks.filter(t => t.status !== 'Done'); // Only active tasks in list usually
+    if(currentFilter !== 'All') tasks = tasks.filter(t => (t.project || 'General Work') === currentFilter);
+    tasks.sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+
+    tasks.forEach(task => {
+        const tr = document.createElement('tr');
+        const statusClass = task.status === 'To Do' ? 'status-todo' : 'status-progress';
+        
+        tr.innerHTML = `
+            <td><span class="status-badge ${statusClass}">${task.status}</span></td>
+            <td style="font-weight:600">${task.title}</td>
+            <td>${task.project || '-'}</td>
+            <td>${task.category || '-'}</td>
+            <td>${task.dueDate}</td>
+            <td>${task.priority}</td>
+        `;
+        tr.onclick = () => window.openTaskModal(task.id);
+        tbody.appendChild(tr);
+    });
+}
+
+// --- VIEW 3: CALENDAR (New) ---
+function renderTasksCalendar() {
+    const grid = document.getElementById('task-calendar-grid');
+    grid.innerHTML = '';
+    const now = new Date();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    const today = getLocalISODate();
+    
+    document.getElementById('task-cal-month-name').innerText = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    for(let i=0; i<firstDay; i++) grid.appendChild(document.createElement('div'));
+
+    for(let i=1; i<=daysInMonth; i++) {
+        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        const div = document.createElement('div');
+        div.className = 'cal-day';
+        if(i === now.getDate()) div.classList.add('today');
+        div.innerHTML = `<span>${i}</span>`;
+
+        // Find Tasks for this day
+        const dayTasks = appState.tasks.filter(t => t.dueDate === dateStr && t.status !== 'Done');
+        
+        // Find Overdue Tasks (only show on today's tile if you want, or just keep them on their original date in red)
+        // Logic requested: "When overdue make it red"
+        
+        dayTasks.forEach(task => {
+            const item = document.createElement('div');
+            item.className = 'cal-item';
+            
+            // Overdue Check: If dateStr is before today
+            if (dateStr < today) {
+                item.classList.add('task-cal-overdue');
+            }
+            
+            item.innerText = task.title;
+            item.onclick = (e) => { e.stopPropagation(); window.openTaskModal(task.id); };
+            div.appendChild(item);
+        });
+
+        grid.appendChild(div);
+    }
+}
+
+// === MANAGERS (Project/Category) ===
 window.toggleCatManager = function() { const el = document.getElementById('cat-manager'); el.style.display = el.style.display === 'none' ? 'block' : 'none'; renderCatList(); };
 window.toggleProjManager = function() { const el = document.getElementById('proj-manager'); el.style.display = el.style.display === 'none' ? 'block' : 'none'; renderProjList(); };
-
-// Add Items
-window.addCategory = function() {
-    const input = document.getElementById('new-cat-input');
-    const val = input.value.trim();
-    if(val && !appState.categories.includes(val)) { appState.categories.push(val); input.value = ''; window.saveData(); renderCatList(); populateDropdowns(); }
-};
-window.addProject = function() {
-    const input = document.getElementById('new-proj-input');
-    const val = input.value.trim();
-    if(val && !appState.projects.includes(val)) { appState.projects.push(val); input.value = ''; window.saveData(); renderProjList(); populateDropdowns(); }
-};
-
-// Remove Items
+window.addCategory = function() { const input = document.getElementById('new-cat-input'); const val = input.value.trim(); if(val && !appState.categories.includes(val)) { appState.categories.push(val); input.value = ''; window.saveData(); renderCatList(); populateDropdowns(); } };
+window.addProject = function() { const input = document.getElementById('new-proj-input'); const val = input.value.trim(); if(val && !appState.projects.includes(val)) { appState.projects.push(val); input.value = ''; window.saveData(); renderProjList(); populateDropdowns(); } };
 window.removeCategory = function(cat) { appState.categories = appState.categories.filter(c => c !== cat); window.saveData(); renderCatList(); populateDropdowns(); };
 window.removeProject = function(proj) { appState.projects = appState.projects.filter(p => p !== proj); window.saveData(); renderProjList(); populateDropdowns(); };
-
-// Render Lists in Manager
 function renderCatList() { document.getElementById('cat-list-display').innerHTML = appState.categories.map(c => `<span class="cat-tag-manage">${c} <span class="cat-remove" onclick="window.removeCategory('${c}')">&times;</span></span>`).join(''); }
 function renderProjList() { document.getElementById('proj-list-display').innerHTML = appState.projects.map(p => `<span class="cat-tag-manage">${p} <span class="cat-remove" onclick="window.removeProject('${p}')">&times;</span></span>`).join(''); }
-
-// Populate Selects
 function populateDropdowns(activeTask = null) {
-    // Categories
     const catSelect = document.getElementById('t-category');
     catSelect.innerHTML = '<option value="">No Category</option>' + appState.categories.map(c => `<option value="${c}" ${activeTask && activeTask.category === c ? 'selected' : ''}>${c}</option>`).join('');
-    
-    // Projects
     const projSelect = document.getElementById('t-project');
     projSelect.innerHTML = '<option value="">General Work</option>' + appState.projects.map(p => `<option value="${p}" ${activeTask && activeTask.project === p ? 'selected' : ''}>${p}</option>`).join('');
-
-    // Update Filter Dropdown on Dashboard too
     const filterSelect = document.getElementById('board-project-filter');
     const currentFilter = filterSelect.value;
     filterSelect.innerHTML = '<option value="All">All Projects</option>' + appState.projects.map(p => `<option value="${p}" ${currentFilter === p ? 'selected' : ''}>${p}</option>`).join('');
 }
 
-
 /* =========================================
-   4. JOURNAL, NOTES, MILESTONES (Standard)
+   4. OTHER VIEWS (Journal, Notes, Milestones)
    ========================================= */
+// ... (These functions remain largely the same, included below for completeness) ...
 
 window.renderNotes = function() {
     const pinnedContainer = document.getElementById('pinned-notes-container');
@@ -249,7 +286,6 @@ window.renderNotes = function() {
     let notesToRender = appState.notes;
     if(filterDate) { notesToRender = notesToRender.filter(n => n.date === filterDate); }
     notesToRender.sort((a,b) => new Date(b.date) - new Date(a.date));
-
     notesToRender.forEach(note => {
         const div = document.createElement('div');
         div.className = `note-card ${note.isPinned ? 'pinned' : ''}`;
@@ -279,14 +315,10 @@ window.renderHistory = function() {
     const tbody = document.getElementById('history-table-body'); tbody.innerHTML = '';
     const filter = document.getElementById('history-filter').value;
     let doneTasks = appState.tasks.filter(t => t.status === 'Done');
-    // Stats: Top Project
-    const projCounts = {};
-    doneTasks.forEach(t => { const p = t.project || 'General Work'; projCounts[p] = (projCounts[p] || 0) + 1; });
+    const projCounts = {}; doneTasks.forEach(t => { const p = t.project || 'General Work'; projCounts[p] = (projCounts[p] || 0) + 1; });
     const topProj = Object.keys(projCounts).length > 0 ? Object.keys(projCounts).reduce((a, b) => projCounts[a] > projCounts[b] ? a : b) : '-';
-    
     document.getElementById('dash-total').innerText = doneTasks.length;
     document.getElementById('dash-cat').innerText = topProj;
-
     if (filter === 'last-week') { const d = new Date(); d.setDate(d.getDate() - 7); doneTasks = doneTasks.filter(t => t.completedDate >= d.toISOString().split('T')[0]); }
     else if (filter === 'last-month') { const d = new Date(); d.setDate(d.getDate() - 30); doneTasks = doneTasks.filter(t => t.completedDate >= d.toISOString().split('T')[0]); }
     doneTasks.sort((a,b) => new Date(b.completedDate) - new Date(a.completedDate));
@@ -298,26 +330,22 @@ window.renderHistory = function() {
     });
 };
 
-// Milestones (Unchanged Logic)
 let currentMilestoneView = 'kanban';
-window.switchMilestoneView = function(viewName) { currentMilestoneView = viewName; document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active')); const index = viewName === 'kanban' ? 0 : viewName === 'list' ? 1 : 2; document.querySelectorAll('.view-btn')[index].classList.add('active'); document.querySelectorAll('.ms-view-container').forEach(c => c.classList.remove('active')); document.getElementById(`ms-${viewName}`).classList.add('active'); renderMilestones(); };
+window.switchMilestoneView = function(viewName) { currentMilestoneView = viewName; document.querySelectorAll('#milestones-view .view-btn').forEach(b => b.classList.remove('active')); const index = viewName === 'kanban' ? 0 : viewName === 'list' ? 1 : 2; document.querySelectorAll('#milestones-view .view-btn')[index].classList.add('active'); document.querySelectorAll('.ms-view-container').forEach(c => c.classList.remove('active')); document.getElementById(`ms-${viewName}`).classList.add('active'); renderMilestones(); };
 function renderMilestones() { if (currentMilestoneView === 'kanban') renderMSKanban(); else if (currentMilestoneView === 'list') renderMSList(); else renderMSCalendar(); }
 function renderMSKanban() { const cols = { 'Planned': [], 'In Progress': [], 'Mastered': [] }; appState.milestones.forEach(m => { if(cols[m.status]) cols[m.status].push(m); }); ['Planned', 'In Progress', 'Mastered'].forEach(status => { const colId = `ms-col-${status === 'Planned' ? 'todo' : status === 'In Progress' ? 'progress' : 'done'}`; const container = document.getElementById(colId); const header = container.querySelector('h4'); container.innerHTML = ''; container.appendChild(header); cols[status].forEach(m => { const card = document.createElement('div'); card.className = 'kanban-card'; card.innerHTML = `<div class="k-title">${m.title}</div><div class="k-date">${m.targetDate}</div><div style="font-size:0.7rem; margin-top:5px;">Progress: ${m.progress}%</div><div style="height:4px; background:#eee; margin-top:2px;"><div style="width:${m.progress}%; height:100%; background:var(--accent);"></div></div>`; card.onclick = () => window.openMilestoneModal(m.id); container.appendChild(card); }); }); }
 function renderMSList() { const tbody = document.getElementById('ms-table-body'); tbody.innerHTML = appState.milestones.map(m => `<tr onclick="window.openMilestoneModal('${m.id}')"><td>${m.title}</td><td>${m.targetDate}</td><td>${m.progress}%</td><td>${m.status}</td></tr>`).join(''); }
 function renderMSCalendar() { const grid = document.getElementById('calendar-grid'); grid.innerHTML = ''; const now = new Date(); const month = now.getMonth(); const year = now.getFullYear(); document.getElementById('cal-month-name').innerText = now.toLocaleString('default', { month: 'long', year: 'numeric' }); const firstDay = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate(); for(let i=0; i<firstDay; i++) grid.appendChild(document.createElement('div')); for(let i=1; i<=daysInMonth; i++) { const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`; const div = document.createElement('div'); div.className = 'cal-day'; if(i === now.getDate()) div.classList.add('today'); div.innerHTML = `<span>${i}</span>`; appState.milestones.filter(m => m.targetDate === dateStr).forEach(m => { const item = document.createElement('div'); item.className = 'cal-item'; item.innerText = m.title; item.onclick = (e) => { e.stopPropagation(); window.openMilestoneModal(m.id); }; div.appendChild(item); }); grid.appendChild(div); } }
 
-
 /* =========================================
    5. MODAL HANDLERS
    ========================================= */
-
 window.openTaskModal = function(id = null) {
     const modal = document.getElementById('task-modal');
     const form = document.getElementById('task-form');
     document.getElementById('cat-manager').style.display = 'none';
     document.getElementById('proj-manager').style.display = 'none';
     form.reset();
-    
     let activeTask = null;
     if(id) {
         activeTask = appState.tasks.find(x => x.id === id);
@@ -333,29 +361,14 @@ window.openTaskModal = function(id = null) {
         document.getElementById('t-date').value = getLocalISODate();
         document.getElementById('btn-delete-task').classList.add('delete-btn-hidden');
     }
-
-    populateDropdowns(activeTask); // Ensures dropdowns have correct selection
+    populateDropdowns(activeTask);
     modal.style.display = 'flex';
 };
 
-window.openJournalModal = function(id = null) {
-    const modal = document.getElementById('journal-modal');
-    const form = document.getElementById('journal-form');
-    form.reset();
-    if(id) {
-        const j = appState.journal.find(x => x.id === id);
-        document.getElementById('j-id').value = j.id;
-        document.getElementById('j-date').value = j.date;
-        document.getElementById('j-time').value = j.time;
-        document.getElementById('j-recap').value = j.recap;
-        document.getElementById('j-plan').value = j.plan;
-        document.getElementById('j-notes').value = j.notes || '';
-    } else { document.getElementById('j-id').value = ''; document.getElementById('j-date').value = getLocalISODate(); }
-    modal.style.display = 'flex';
-};
+// ... (Journal, Note, Milestone modals identical to previous) ...
+window.openJournalModal = function(id = null) { const modal = document.getElementById('journal-modal'); const form = document.getElementById('journal-form'); form.reset(); if(id) { const j = appState.journal.find(x => x.id === id); document.getElementById('j-id').value = j.id; document.getElementById('j-date').value = j.date; document.getElementById('j-time').value = j.time; document.getElementById('j-recap').value = j.recap; document.getElementById('j-plan').value = j.plan; document.getElementById('j-notes').value = j.notes || ''; } else { document.getElementById('j-id').value = ''; document.getElementById('j-date').value = getLocalISODate(); } modal.style.display = 'flex'; };
 window.openNoteModal = function(id = null) { const modal = document.getElementById('note-modal'); const form = document.getElementById('note-form'); form.reset(); if(id) { const n = appState.notes.find(x => x.id === id); document.getElementById('n-id').value = n.id; document.getElementById('n-date').value = n.date; document.getElementById('n-content').value = n.content; document.getElementById('n-pinned').checked = n.isPinned; document.getElementById('btn-delete-note').classList.remove('delete-btn-hidden'); } else { document.getElementById('n-id').value = ''; document.getElementById('n-date').value = getLocalISODate(); document.getElementById('btn-delete-note').classList.add('delete-btn-hidden'); } modal.style.display = 'flex'; };
 window.openMilestoneModal = function(id = null) { const modal = document.getElementById('milestone-modal'); const form = document.getElementById('milestone-form'); form.reset(); if(id) { const m = appState.milestones.find(x => x.id === id); document.getElementById('m-id').value = m.id; document.getElementById('m-title').value = m.title; document.getElementById('m-date').value = m.targetDate; document.getElementById('m-status').value = m.status; document.getElementById('m-details').value = m.details; document.getElementById('m-progress').value = m.progress; document.getElementById('m-prog-val').innerText = m.progress + '%'; document.getElementById('btn-delete-ms').classList.remove('delete-btn-hidden'); } else { document.getElementById('m-id').value = ''; document.getElementById('btn-delete-ms').classList.add('delete-btn-hidden'); } modal.style.display = 'flex'; };
-
 window.closeModal = function(id) { document.getElementById(id).style.display = 'none'; };
 
 // Submits
@@ -369,7 +382,7 @@ document.getElementById('task-form').addEventListener('submit', (e) => {
         dueDate: document.getElementById('t-date').value,
         priority: document.getElementById('t-priority').value,
         category: document.getElementById('t-category').value,
-        project: document.getElementById('t-project').value, // New Field
+        project: document.getElementById('t-project').value,
         status: status,
         notes: document.getElementById('t-notes').value,
         completedDate: status === 'Done' ? getLocalISODate() : null
@@ -382,11 +395,10 @@ document.getElementById('task-form').addEventListener('submit', (e) => {
     window.saveData(); renderAll(); window.closeModal('task-modal');
 });
 
-// Other form listeners (Journal, Note, Milestone) are identical to previous version, omitted for brevity but assumed present in standard copy-paste.
 document.getElementById('journal-form').addEventListener('submit', (e) => { e.preventDefault(); const id = document.getElementById('j-id').value; const entry = { id: id || generateUUID(), date: document.getElementById('j-date').value, time: document.getElementById('j-time').value, recap: document.getElementById('j-recap').value, plan: document.getElementById('j-plan').value, notes: document.getElementById('j-notes').value }; if(id) { const idx = appState.journal.findIndex(j => j.id === id); appState.journal[idx] = entry; } else appState.journal.push(entry); window.saveData(); renderJournal(); window.closeModal('journal-modal'); });
 document.getElementById('note-form').addEventListener('submit', (e) => { e.preventDefault(); const id = document.getElementById('n-id').value; const note = { id: id || generateUUID(), date: document.getElementById('n-date').value, content: document.getElementById('n-content').value, isPinned: document.getElementById('n-pinned').checked }; if(id) { const idx = appState.notes.findIndex(n => n.id === id); appState.notes[idx] = note; } else appState.notes.push(note); window.saveData(); renderNotes(); window.closeModal('note-modal'); });
 document.getElementById('milestone-form').addEventListener('submit', (e) => { e.preventDefault(); const id = document.getElementById('m-id').value; const ms = { id: id || generateUUID(), title: document.getElementById('m-title').value, targetDate: document.getElementById('m-date').value, status: document.getElementById('m-status').value, details: document.getElementById('m-details').value, progress: document.getElementById('m-progress').value }; if(id) { const idx = appState.milestones.findIndex(m => m.id === id); appState.milestones[idx] = ms; } else appState.milestones.push(ms); window.saveData(); renderMilestones(); window.closeModal('milestone-modal'); });
-// Deletes
+
 window.deleteCurrentTask = function() { if(confirm('Delete?')) { appState.tasks = appState.tasks.filter(t => t.id !== document.getElementById('task-id').value); window.saveData(); renderAll(); window.closeModal('task-modal'); } };
 window.deleteCurrentNote = function() { if(confirm('Delete?')) { appState.notes = appState.notes.filter(n => n.id !== document.getElementById('n-id').value); window.saveData(); renderNotes(); window.closeModal('note-modal'); } };
 window.deleteCurrentMS = function() { if(confirm('Delete?')) { appState.milestones = appState.milestones.filter(m => m.id !== document.getElementById('m-id').value); window.saveData(); renderMilestones(); window.closeModal('milestone-modal'); } };
@@ -396,4 +408,17 @@ function applyTheme(theme) { if (theme === 'dark') document.body.classList.add('
 document.getElementById('theme-toggle').addEventListener('click', () => { appState.theme = appState.theme === 'light' ? 'dark' : 'light'; applyTheme(appState.theme); window.saveData(); });
 document.getElementById('refresh-btn').addEventListener('click', () => { window.loadData(); alert('Synced.'); });
 document.getElementById('export-btn').addEventListener('click', window.exportData);
-window.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('.nav-links li').forEach(li => { li.addEventListener('click', () => { document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active')); document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view')); li.classList.add('active'); document.getElementById(li.dataset.tab).classList.add('active-view'); if(li.dataset.tab === 'history-view') window.renderHistory(); }); }); window.onclick = (e) => { if (e.target.classList.contains('modal')) e.target.style.display = 'none'; }; window.loadData(); });
+
+window.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.nav-links li').forEach(li => {
+        li.addEventListener('click', () => {
+            document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+            li.classList.add('active');
+            document.getElementById(li.dataset.tab).classList.add('active-view');
+            if(li.dataset.tab === 'history-view') window.renderHistory();
+        });
+    });
+    window.onclick = (e) => { if (e.target.classList.contains('modal')) e.target.style.display = 'none'; };
+    window.loadData();
+});
